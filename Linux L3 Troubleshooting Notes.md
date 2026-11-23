@@ -42,6 +42,17 @@ status: in-progress
 - [[#17. SSL / TLS Certificate Troubleshooting]]
 - [[#18. Linux Boot Sequence & Boot Failure Troubleshooting]]
 - [[#19. DataVG / LVM Application Filesystem Recovery]]
+- [[#20. Disk I/O Bottleneck Troubleshooting]]
+- [[#21. No Space Left on Device]]
+- [[#22. Inode Exhaustion]]
+- [[#23. Too Many Open Files (EMFILE)]]
+- [[#24. The OOM Killer Strikes]]
+- [[#25. Creeping Memory Leak]]
+- [[#26. High Load, Idle CPU]]
+- [[#27. CPU Pegged at 100%]]
+- [[#28. Swap Thrashing]]
+- [[#29. Server Unreachable]]
+
 
 ---
 
@@ -2570,3 +2581,414 @@ journalctl -u <service>               # service logs
 > **Protect → Discover → Activate → Mount → Restore → Validate**
 
 ---
+
+## 20. Disk I/O Bottleneck Troubleshooting
+
+### 20.1 Scenario & Symptoms
+
+> [!info] Scenario
+> CPU looks fine, memory looks fine, and network looks fine — yet ==everything touching the disk crawls==.
+
+> [!warning] Key Symptom
+> ```text
+> iostat: %util 99.8  await 480ms  aqu-sz 14  (device spec says 2ms)
+> ```
+> **Common triggers:** backup running on the data disk • no TRIM scheduled on SSD • WAL/logs sharing the same disk/spindle as application data.
+
+### 20.2 Two-Path Diagnostic Flow
+
+```mermaid
+flowchart TD
+    S["Slow App / Normal CPU, RAM & Network"] --> A["Path A: Catch the Writer"]
+    S --> B["Path B: Check the Device Itself"]
+    A --> A1["iostat -xz 1 3<br/>(await vs spec & aqu-sz)"] --> A2["sudo iotop -oPa<br/>(identify culprit process)"] --> A3["pidstat -d 1 5<br/>(kB_read/s vs kB_wr/s)"]
+    B --> B1["sudo smartctl -H /dev/sda<br/>(SMART health & attributes)"] --> B2["dmesg -T | grep -iE 'sda|nvme'<br/>(retries, resets, timeouts)"] --> B3["fio randread 4k benchmark<br/>(compare vs datasheet)"]
+```
+
+### 20.3 Step-by-Step Investigation Commands
+
+#### Path A — Catch the Writer (Process & Queue)
+
+| # | Goal | Command | What to Look For |
+| --- | --- | --- | --- |
+| 1 | Read the device queue | `iostat -xz 1 3` | Compare ==`await`== against device spec and check ==`aqu-sz`== (queue depth) — that's where the wall is. |
+| 2 | Name the offending process | `sudo iotop -oPa` | Shows only active I/O processes (`-o`), processes not threads (`-P`), accumulated I/O (`-a`). |
+| 3 | Measure per-process I/O rate | `pidstat -d 1 5` | Compare `kB_read/s` vs `kB_wr/s` — ==writes hurt more than reads==. |
+
+#### Path B — Check the Device Itself (Hardware & Health)
+
+| # | Goal | Command | What to Look For |
+| --- | --- | --- | --- |
+| 1 | Interrogate SMART health | `sudo smartctl -H /dev/sda` | `PASSED` is the floor, not a guarantee — inspect SMART attributes too (`smartctl -A`). |
+| 2 | Scan kernel disk complaints | `dmesg -T \| grep -iE 'sda\|nvme'` | ==Retries, resets, and timeouts== precede disk failure. |
+| 3 | Benchmark honestly | `fio --name=q --rw=randread --bs=4k --iodepth=32 --size=256m` | Compare actual IOPS and latency against the device's datasheet. |
+
+### 20.4 Likely Root Causes & Fixes
+
+| Root Cause | Fix / Action |
+| --- | --- |
+| Backup / vacuum / reindex storms | Schedule heavy jobs off-peak and throttle I/O priority: `ionice -c3 <command>` |
+| SSD TRIM never scheduled | Enable periodic TRIM: `systemctl enable --now fstrim.timer` |
+| WAL / logs and data sharing one disk | Split hot paths — move ==WAL/logs to a second device== |
+| Failing disk slowing the entire queue | Verify via SMART & `dmesg`, evacuate/replace the failing drive |
+
+### 20.5 Useful Commands (Quick Reference)
+
+```bash
+iostat -xz 1 3                                                # device queue, await & aqu-sz
+sudo iotop -oPa                                               # active I/O processes (accumulated)
+pidstat -d 1 5                                                # per-process read/write rate
+sudo smartctl -H /dev/sda                                     # SMART health status
+dmesg -T | grep -iE 'sda|nvme'                                # kernel storage errors with timestamps
+fio --name=q --rw=randread --bs=4k --iodepth=32 --size=256m   # 4K random read benchmark
+ionice -c3 <heavy-job>                                        # run job with idle I/O priority
+sudo systemctl enable --now fstrim.timer                      # schedule automatic SSD TRIM
+```
+
+> [!quote] L3 Takeaway ★
+> **"==`%util` lies on SSDs and RAID== — judge I/O by `await` against the device's spec, and by who is writing."**
+
+
+---
+
+## 21. No Space Left on Device
+
+> [!info] Scenario & Symptom
+> Writes start failing, the volume reads 100%, and the obvious suspects don't add up.
+> ```text
+> OSError: [Errno 28] No space left on device
+> ```
+> **When it happens:** runaway logs & core dumps • deleted files still held open • `journald` / Docker layers growing.
+
+### Path A — Find the Space
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Confirm which mount is full | `df -h` | Check `Use%` per mount before hunting |
+| 2 | Drill into biggest directories | `du -x --max-depth=2 / 2>/dev/null \| sort -n \| tail -12` | `-x` stays on one filesystem; repeat on guilty path |
+| 3 | List giant files directly | `find /var -xdev -type f -size +500M -exec du -h {} + 2>/dev/null \| sort -rh \| tail -5` | Fastest route when one file ate the disk |
+
+### Path B — The Hidden Space (Deleted-but-Open)
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Compare `df` vs `du` | `df -h / ; du -xsh / 2>/dev/null` | Disagreement means space is allocated but invisible |
+| 2 | Find deleted-but-open files | `lsof +L1 2>/dev/null \| sort -k7 -n \| tail -8` | Files already `rm`'d while a process still writes to them |
+| 3 | Free space without `rm` | `truncate -s 0 /var/log/app/huge.log` | `rm` waits for fd close; ==`truncate` frees space instantly== |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Missing/broken log rotation • Core dumps in `/var` • Docker images/layers/logs • Uncapped `journald`.
+- **Fixes:**
+  1. Truncate live offenders: `truncate -s 0 <file>`
+  2. Cap journald now: `journalctl --vacuum-size=200M`
+  3. Persist journald limit: set `SystemMaxUse=200M` in `/etc/systemd/journald.conf`
+
+> [!quote] L3 Takeaway ★
+> **"==`rm` frees nothing while a process still holds the file open== — truncate the fd, then fix the rotation."**
+
+---
+
+## 22. Inode Exhaustion
+
+> [!info] Scenario & Symptom
+> "No space left" — yet `df -h` shows gigabytes free. The filesystem ran out of ==names (inodes)==, not bytes.
+> ```text
+> touch: cannot touch 'f_93012.tmp': No space left on device
+> ```
+> **When it happens:** millions of tiny files • mail / session / cache queues • extracted archives in loops.
+
+### Path A — Confirm It's Inodes
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Check byte space first | `df -h /var` | Plenty free confirms it is not a byte issue |
+| 2 | Check inode usage | `df -i /var` | ==`IUse%` at or near 100%== is the smoking gun |
+| 3 | Watch it while it fills | `watch -n 5 'df -i /var'` | Confirms a live process is still minting files |
+
+### Path B — Find the File Factory
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Rank directories by file count | `find /var -type f \| sed 's\|/[^/]*$\|\|' \| sort \| uniq -c \| sort -nr \| head` | Top directory is the culprit (usually queue or cache) |
+| 2 | Sample the files | `ls -lht /var/spool/clientmqueue \| head` | Names and timestamps reveal the creator |
+| 3 | Match it to a process | `lsof +D /var/spool/mqueue 2>/dev/null \| head` | Slow but decisive — catches the writer in the act |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Uncleaned session/cache files • Mail queue backlog • Backup temp files in loops • Small-file workload on inode-poor `ext4`.
+- **Fixes:**
+  1. Purge queue output: `find /var/spool/clientmqueue -type f -delete`
+  2. Clean stale cache: `find /var/cache/app -type f -mtime +1 -delete`
+  3. Long-term rebuild: `mkfs.ext4 -i 8192` (or migrate to ==XFS==)
+
+> [!quote] L3 Takeaway ★
+> **"==Every file costs an inode even at zero bytes== — count names, not bytes, when 'full' doesn't compute."**
+
+---
+
+## 23. Too Many Open Files (EMFILE)
+
+> [!info] Scenario & Symptom
+> The app survives until traffic peaks, then everything fails at once with `EMFILE`.
+> ```text
+> accept() failed: EMFILE: Too many open files
+> ```
+> **When it happens:** connection spikes • unclosed sockets/files • low inherited `systemd` limits.
+
+### Path A — Process Level
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Check current shell limit | `ulimit -n` | Soft limit for this shell only |
+| 2 | Find the app's real limit | `cat /proc/$(pgrep -f myapp \| head -1)/limits \| grep 'open files'` | Soft vs hard — ==the soft limit is what bites== |
+| 3 | Count live descriptors | `ls /proc/<pid>/fd \| wc -l` | If at the limit, every new `accept()` fails |
+
+### Path B — System-Wide Table
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Check global allocation | `cat /proc/sys/fs/file-nr` | `allocated  free  max` — first creeping toward third = leak |
+| 2 | Check configured kernel max | `sysctl fs.file-max` | Kernel-wide ceiling (usually millions) |
+| 3 | Raise if system is capped | `sudo sysctl -w fs.file-max=2097152` | Per-process limits still apply afterwards |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Unclosed sockets/file handles • Sudden connection surge • Low systemd default `LimitNOFILE` • Threads × handles multiplier.
+- **Fixes:**
+  1. Raise per-service limit: `systemctl edit app` → add `LimitNOFILE=65535` under `[Service]`
+  2. Apply & restart: `systemctl daemon-reload && systemctl restart app`
+  3. Persist kernel ceiling: add `fs.file-max=2097152` under `/etc/sysctl.d/`
+
+> [!quote] L3 Takeaway ★
+> **"==The limit is per-process, not global== — fix it where the process is born, not in your shell."**
+
+---
+
+## 24. The OOM Killer Strikes
+
+> [!info] Scenario & Symptom
+> A process simply disappears overnight. Nothing in the app log — because the ==kernel killed it==.
+> ```text
+> Out of memory: Killed process 1234 (myapp) total-vm:8192000kB
+> ```
+> **When it happens:** memory spike or leak • no swap headroom • cgroup memory limits (`MemoryMax`).
+
+### Path A — Confirm the Kill
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Search kernel ring buffer | `sudo dmesg -T \| grep -i 'out of memory'` | Shows victim, `oom_score`, and RSS of processes |
+| 2 | Cross-check the journal | `journalctl -k --since -24h \| grep -i -A3 oom` | Same events with timestamps across reboots |
+| 3 | Check cgroup v2 counter | `cat /sys/fs/cgroup/system.slice/app.service/memory.events` | ==`oom_kill > 0`== confirms a cgroup-level OOM kill |
+
+### Path B — Who Held the RAM
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Read the honest number | `free -h` | ==`available` matters==, not `free` (page cache is reclaimable) |
+| 2 | Rank processes by RSS | `ps aux --sort=-rss \| head -8` | Largest RSS at kill time is usually the trigger |
+| 3 | Shared-memory aware view | `cat /proc/<pid>/smaps_rollup \| grep -E '^(Rss\|Pss)'` | `Pss` splits shared pages fairly across processes |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Memory leak or unbounded cache • Oversized worker/thread pool • No swap (zero spike tolerance) • cgroup `MemoryMax` smaller than workload.
+- **Fixes:**
+  1. Protect critical daemons: set `OOMScoreAdjust=-500` on `sshd`/DB unit files
+  2. Cap heavy services: `systemctl set-property app MemoryMax=6G`
+  3. Add headroom: create a swapfile + set `vm.swappiness=10`
+
+> [!quote] L3 Takeaway ★
+> **"==The OOM killer shoots the highest-scoring target, not the guilty one== — set `oom_score_adj` before it picks."**
+
+---
+
+## 25. Creeping Memory Leak
+
+> [!info] Scenario & Symptom
+> Every restart "fixes" it, then RSS starts climbing again — a little faster each week.
+> ```text
+> RSS 412 MB → 1.9 GB over 5 days (steady climb, no plateau)
+> ```
+> **When it happens:** unbounded in-app caches • `glibc` arenas on many threads • fd growth masquerading as RAM.
+
+### Path A — Measure the Trend
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Record a baseline | `ps -o pid,rss,vsz,etime -p <pid>` | Repeat hourly — ==a leak is a slope, not a snapshot== |
+| 2 | Watch private memory | `cat /proc/<pid>/smaps_rollup \| grep Private_Dirty` | Private dirty pages are what the process truly owns |
+| 3 | Automate observation | `watch -n 300 'ps -o rss,etime -p <pid>'` | Linear growth with no plateau confirms a leak |
+
+### Path B — Characterize It
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Largest anonymous mappings | `pmap -x <pid> \| sort -k2 -n \| tail -8` | Huge anon blocks = heap; many equal blocks = arenas |
+| 2 | Check arena explosion | `env \| grep MALLOC_ARENA_MAX` | `glibc` opens arenas per thread (64 threads ≈ 64 private heaps) |
+| 3 | Rule out fd mimicry | `ls /proc/<pid>/fd \| wc -l` | Climbing fd count leaks address space, not heap |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Cache without eviction policy • `glibc` malloc arenas × threads • Fragmentation after traffic spikes • Third-party lib holding buffers.
+- **Fixes:**
+  1. Cap arenas: set `MALLOC_ARENA_MAX=4` in the systemd unit file
+  2. Stopgap reset: set `RuntimeMaxSec=24h` for graceful scheduled restarts
+  3. Profile the heap: use `jemalloc` or `valgrind --tool=massif` on a test copy
+
+> [!quote] L3 Takeaway ★
+> **"==A leak is defined by the trend, not the level== — measure the same metric over hours before you call it."**
+
+---
+
+## 26. High Load, Idle CPU
+
+> [!info] Scenario & Symptom
+> Load average is 12 on 4 cores, yet `top` shows 92% idle. Something is ==waiting, not computing==.
+> ```text
+> load average: 12.40, 10.85, 9.72 — CPU 92% idle
+> ```
+> **When it happens:** storage saturation • hung NFS mounts • backup jobs on production disks.
+
+### Path A — Find the Waiting
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Split load into run vs wait | `vmstat 1 5` | High `b` column or high `wa%` = blocked / I/O-wait tasks |
+| 2 | List D-state processes | `ps axo pid,stat,wchan:32,comm \| awk '$2 ~ /D/'` | ==Uninterruptible sleep (`D`)== — every stuck task adds to load |
+| 3 | See who is doing I/O | `sudo iotop -oPa` | The writer is the load source, not the CPU |
+
+### Path B — Interrogate the Storage
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Check device saturation | `iostat -xz 1 3` | Rising `await` and pegged `%util` = disk bottleneck |
+| 2 | Look for hardware screams | `dmesg -T \| grep -iE 'I/O error\|timeout\|reset'` | Disk resets/timeouts explain sudden D-states |
+| 3 | Probe for a hung mount | `timeout 5 df -h ; echo exit=$?` | ==`exit=124`== means a hung mount (usually NFS) freezes even `df` |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Backup/`rsync` on the hot disk • Failing disk stalling the queue • Stale NFS or FUSE mount • Database `fsync` flood.
+- **Fixes:**
+  1. De-prioritize bulk I/O: `ionice -c3 -p <pid>` or `nice` the job
+  2. Detach hung mount: `umount -l -f /mnt/nfs`
+  3. Isolate workloads: move backups / WAL to a separate disk
+
+> [!quote] L3 Takeaway ★
+> **"==Load counts D-state waiters too== — disk and NFS problems regularly dress up as CPU load."**
+
+---
+
+## 27. CPU Pegged at 100%
+
+> [!info] Scenario & Symptom
+> One core or all of them — the box is hot, latency is up, and the app is struggling.
+> ```text
+> top: 340% CPU across 4 cores — 3 hot threads
+> ```
+> **When it happens:** regex backtracking • GC / JIT churn • runaway logging loop.
+
+### Path A — Find the Thread
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Go per-thread | `top -H -p <pid>` | Often one hot thread inside an otherwise quiet process |
+| 2 | Watch it over time | `pidstat -t -p <pid> 1` | Sustained vs bursty (bursty hints at periodic jobs) |
+| 3 | Profile its syscalls | `timeout 10 strace -cp <tid>` | Spinning on one syscall (`futex`, `read`, `epoll`) shows why |
+
+### Path B — Profile, Then Blame
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Sample the stack | `perf record -F 99 -p <pid> -g -- sleep 15` | Then run `perf report` to spot the exact hot function |
+| 2 | Check cgroup throttling | `cat /sys/fs/cgroup/.../cpu.stat \| grep throttled` | Rising ==`nr_throttled`== means the quota — not the code — is the bottleneck |
+| 3 | Correlate with app logs | `journalctl -u app --since -1h \| grep -i gc` | GC storms and retry loops leave clear fingerprints |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** Hot loop / regex backtracking • GC pressure from oversized heaps • Retry storm against a down dependency • Crypto/regex on every request.
+- **Fixes:**
+  1. Demote noisy service: `systemctl set-property app CPUWeight=20`
+  2. Throttle to a quota: set `CPUQuota=200%` in the systemd unit
+  3. Fix the code path: cache results, bound regexes, tune GC
+
+> [!quote] L3 Takeaway ★
+> **"==Diagnose per-thread first==: 340% CPU is often one runaway thread multiplied by polite siblings."**
+
+
+---
+
+## 28. Swap Thrashing
+
+> [!info] Scenario & Symptom
+> RAM is not technically full, yet `kswapd0` burns CPU and every disk hit takes seconds.
+> ```text
+> vmstat: si 8,120  so 6,400 → constant paging in/out
+> ```
+> **When it happens:** `swappiness` too high • database on a general-purpose box • undersized RAM for the workload.
+
+### Path A — See the Churn
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Watch swap traffic | `vmstat 1 5` | Continuous non-zero ==`si`/`so`== = thrashing, not harmless caching |
+| 2 | Measure I/O wait spikes | `vmstat 1 \| awk '$16>50'` | `wa%` spikes line up with application stall reports |
+| 3 | Find the swappers | `grep VmSwap /proc/*/status 2>/dev/null \| sort -k2 -rn \| head` | Lists which processes actually got paged out |
+
+### Path B — Tune the Policy
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Read current bias | `sysctl vm.swappiness` | Default `60` swaps long-lived pages too eagerly on servers |
+| 2 | Check swap layout | `swapon --show` | Verify size and priority (multiple devices should share equal priority) |
+| 3 | Confirm RAM pressure | `grep -E 'MemAvailable\|CommitLimit' /proc/meminfo` | Commit far above RAM = risky overcommit |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** `vm.swappiness=60` on a DB host • No `zram`/swap → OOM instead of slow • Memory forgotten by old daemons • Backup cache flooding page cache.
+- **Fixes:**
+  1. Keep anonymous pages in RAM: set `vm.swappiness=10` in `/etc/sysctl.d/`
+  2. Add headroom: configure `zram` or a properly sized swapfile for spikes
+  3. Pin critical daemons: use `mlock` / `OOMScoreAdjust`
+
+> [!quote] L3 Takeaway ★
+> **"==Swap used is fine; swap in motion is the disease== — judge by `si`/`so`, never by the `used` column."**
+
+---
+
+## 29. Server Unreachable
+
+> [!info] Scenario & Symptom
+> No ping, no SSH from your desk — yet the provider/hypervisor console works, so the machine itself is alive.
+> ```text
+> ping: connect: Network is unreachable / 100% packet loss
+> ```
+> **When it happens:** interface down or no IP • lost default route • cloud firewall / security group change.
+
+### Path A — The Local Stack
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Is the link up? | `ip link show eth0` | `state UP` required — `DOWN` means driver, cable, or vSwitch |
+| 2 | Does it have an address? | `ip addr show eth0` | No `inet` → DHCP died; wrong IP → lease or config changed |
+| 3 | Is there a way out? | `ip route ; ping -c3 <gateway>` | Missing default route or dead gateway breaks everything |
+
+### Path B — The Path Out
+
+| # | Step | Command | Notes |
+| --- | --- | --- | --- |
+| 1 | Split IP from DNS | `ping -c3 8.8.8.8 ; ping -c3 example.com` | IP works but name fails → DNS issue |
+| 2 | Trace where it dies | `mtr -rwc 20 8.8.8.8` | Packet loss starting at a specific hop identifies who owns the fault |
+| 3 | Check Layer 2 neighbors | `ip neigh show dev eth0` | `FAILED` entries = no ARP response (L2 problem) |
+
+### Likely Root Causes & Fixes
+
+- **Root Causes:** DHCP lease lost / static config wiped • Default route missing • Cloud security group / SG quota • Upstream provider outage.
+- **Fixes:**
+  1. Bring stack up: `ip link set eth0 up && dhclient eth0`
+  2. Restore default route: `ip route add default via <gw>`
+  3. Check cloud/network layer: security groups, NAT gateway, provider status
+
+> [!quote] L3 Takeaway ★
+> **"==Bisect the path: link → address → route → name → remote.== One of the five is always lying."**
+
