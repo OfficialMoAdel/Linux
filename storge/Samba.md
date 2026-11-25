@@ -1,5 +1,5 @@
 ---
-title: "Samba (SMB/CIFS) — Full Configuration Guide"
+title: Samba (SMB/CIFS) — Full Configuration Guide
 created: 2026-11-13
 updated: 2026-11-13
 tags:
@@ -31,6 +31,7 @@ links:
   - "[[NFS]]"
   - "[[FTP Server]]"
 status: complete
+reference: https://www.server-world.info/en/note?os=CentOS_Stream_9&p=samba&f=1
 ---
 
 # 🗂️ Samba (SMB/CIFS) — Full Configuration Guide
@@ -189,21 +190,17 @@ Created symlink /etc/systemd/system/multi-user.target.wants/nmb.service → /usr
 systemctl status smb
 ```
 
-<details>
-<summary>📤 Output</summary>
-
-```output
-● smb.service - Samba SMB Daemon
-     Loaded: loaded (enabled; preset: disabled)
-     Active: active (running) since Tue 2025-04-29 23:59:27 IST; 9s ago
-       Docs: man:smbd(8)
-             man:samba(7)
-             man:smb.conf(5)
-   Main PID: 34110 (smbd)
-     Status: "smbd: ready to serve connections..."
-```
-
-</details>
+> [!example]- 📤 Output
+> ```output
+> ● smb.service - Samba SMB Daemon
+>      Loaded: loaded (enabled; preset: disabled)
+>      Active: active (running) since Tue 2025-04-29 23:59:27 IST; 9s ago
+>        Docs: man:smbd(8)
+>              man:samba(7)
+>              man:smb.conf(5)
+>    Main PID: 34110 (smbd)
+>      Status: "smbd: ready to serve connections..."
+> ```
 
 ### التأكد من المنافذ
 

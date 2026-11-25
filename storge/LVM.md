@@ -1,5 +1,5 @@
 ---
-title: "دليل إعداد LVM (Logical Volume Manager) في RHEL"
+title: دليل إعداد LVM (Logical Volume Manager) في RHEL
 tags:
   - linux
   - lvm
@@ -9,6 +9,7 @@ tags:
 aliases:
   - LVM Guide
   - دليل LVM
+reference: https://www.server-world.info/en/note?os=CentOS_Stream_9&p=lvm&f=1
 ---
 
 # دليل إعداد LVM (Logical Volume Manager)

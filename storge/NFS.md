@@ -1,5 +1,5 @@
 ---
-title: "NFS (Network File System) — Full Configuration Guide"
+title: NFS (Network File System) — Full Configuration Guide
 created: 2026-11-13
 updated: 2026-11-13
 tags:
@@ -34,6 +34,7 @@ links:
   - "[[Samba]]"
   - "[[FTP Server]]"
 status: complete
+reference: https://www.server-world.info/en/note?os=CentOS_Stream_9&p=nfs&f=1
 ---
 
 # 🗂️ NFS (Network File System) — Full Configuration Guide
@@ -72,30 +73,55 @@ status: complete
 ## 🎯 Big Picture
 
 ```mermaid
-flowchart TB
-    subgraph SERVER["🐧 NFS Server<br/>192.168.121.136"]
-        NFSD["nfsd<br/>port 2049"]
-        RPCBIND["rpcbind<br/>port 111"]
-        MOUNTD["mountd<br/>port 20048"]
-        EXPORTS["/etc/exports"]
-        SHARE["/srv/nfs/shared"]
-    end
-    
-    subgraph CLIENTS["العملاء (Linux Only)"]
+flowchart LR
+    subgraph CLIENTS["💻 العملاء (Linux Only)"]
+        direction TB
         C1["🐧 Client 1<br/>mount -t nfs"]
         C2["🐧 Client 2<br/>/etc/fstab"]
     end
-    
-    RPCBIND <-->|Portmapper| NFSD
-    RPCBIND <-->|Portmapper| MOUNTD
-    NFSD <-->|NFS Protocol| C1
-    NFSD <-->|NFS Protocol| C2
-    EXPORTS --> NFSD
-    NFSD --> SHARE
-    
-    style SERVER fill:#2d4a3e,stroke:#4ade80,color:#fff
-    style CLIENTS fill:#1e3a5f,stroke:#60a5fa,color:#fff
+
+    subgraph SERVER["🐧 NFS Server — 192.168.121.136"]
+        direction LR
+        subgraph DAEMONS["⚙️ الخدمات (Daemons)"]
+            direction TB
+            NFSD["🔌 nfsd<br/>Port 2049"]
+            RPCBIND["🗺️ rpcbind<br/>Port 111"]
+            MOUNTD["📂 mountd<br/>Port 20048"]
+        end
+
+        subgraph DATA["🗄️ الإعدادات والتخزين"]
+            direction TB
+            EXPORTS["📄 /etc/exports"]
+            SHARE[("💾 /srv/nfs/shared")]
+        end
+
+        RPCBIND <-->|"Portmapper"| NFSD
+        RPCBIND <-->|"Portmapper"| MOUNTD
+        EXPORTS --> NFSD
+        NFSD <--> SHARE
+    end
+
+    C1 <-->|"NFS Protocol"| NFSD
+    C2 <-->|"NFS Protocol"| NFSD
+
+    classDef clientStyle fill:#172554,stroke:#60a5fa,stroke-width:1.5px,color:#dbeafe
+    classDef nfsdStyle fill:#064e3b,stroke:#34d399,stroke-width:2.5px,color:#d1fae5
+    classDef daemonStyle fill:#042f2e,stroke:#2dd4bf,stroke-width:1.5px,color:#ccfbf1
+    classDef configStyle fill:#451a03,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7
+    classDef storageStyle fill:#2e1065,stroke:#a855f7,stroke-width:2px,color:#f3e8ff
+
+    class C1,C2 clientStyle
+    class NFSD nfsdStyle
+    class RPCBIND,MOUNTD daemonStyle
+    class EXPORTS configStyle
+    class SHARE storageStyle
+
+    style CLIENTS fill:#0f172a,stroke:#3b82f6,stroke-width:1.5px,color:#bfdbfe
+    style SERVER fill:#0b1120,stroke:#10b981,stroke-width:2px,color:#a7f3d0
+    style DAEMONS fill:#0f172a,stroke:#2dd4bf,stroke-width:1px,stroke-dasharray: 5 4,color:#99f6e4
+    style DATA fill:#0f172a,stroke:#a855f7,stroke-width:1px,stroke-dasharray: 5 4,color:#e9d5ff
 ```
+
 
 > [!tip]- 3 قواعد ذهبية قبل البدء
 > 1. **NFS يعمل بين Linux/Unix فقط** — لو محتاج Windows، استخدم [[Samba]]
@@ -877,29 +903,37 @@ mount -a
 
 ```mermaid
 flowchart TD
-    A[مشكلة في NFS؟] --> B{ping ينجح؟}
-    B -->|لا| C[مشكلة شبكة]
-    B -->|نعم| D{nc -zv IP 111؟}
-    D -->|لا| E[rpcbind/Firewall]
-    D -->|نعم| F{showmount -e؟}
-    F -->|clnt_create| G[rpcbind or Firewall]
-    F -->|يظهر الـ shares| H{mount ينجح؟}
-    H -->|access denied| I[exports or perms]
-    H -->|permission denied| J[root_squash]
-    H -->|stale| K[remount]
-    H -->|نعم| L{الكتابة تنجح؟}
-    L -->|لا| M[صلاحيات / UID mismatch]
-    L -->|نعم| N[✅ كل شيء سليم]
-    
-    style N fill:#16a34a,color:#fff
-    style C fill:#dc2626,color:#fff
-    style E fill:#dc2626,color:#fff
-    style G fill:#dc2626,color:#fff
-    style I fill:#dc2626,color:#fff
-    style J fill:#dc2626,color:#fff
-    style K fill:#dc2626,color:#fff
-    style M fill:#dc2626,color:#fff
+    A(["🚨 مشكلة في NFS؟"]) --> B{"1️⃣ هل ping ينجح؟"}
+
+    B -->|"❌ لا"| C["🌐 مشكلة شبكة"]
+    B -->|"✅ نعم"| D{"2️⃣ nc -zv IP 111"}
+
+    D -->|"❌ لا"| E["🔥 rpcbind / Firewall"]
+    D -->|"✅ نعم"| F{"3️⃣ showmount -e"}
+
+    F -->|"clnt_create"| G["🔥 rpcbind أو Firewall"]
+    F -->|"✅ تظهر الـ shares"| H{"4️⃣ هل mount ينجح؟"}
+
+    H -->|"access denied"| I["📄 /etc/exports<br/>أو الصلاحيات"]
+    H -->|"permission denied"| J["🔒 root_squash"]
+    H -->|"stale"| K["🔄 remount"]
+    H -->|"✅ نعم"| L{"5️⃣ هل الكتابة تنجح؟"}
+
+    L -->|"❌ لا"| M["👤 صلاحيات<br/>أو UID mismatch"]
+    L -->|"✅ نعم"| N(["✅ كل شيء سليم"])
+
+    classDef startNode fill:#1e293b,stroke:#fbbf24,stroke-width:2px,color:#fef3c7
+    classDef checkNode fill:#172554,stroke:#60a5fa,stroke-width:1.5px,color:#dbeafe
+    classDef errNode fill:#450a0a,stroke:#f87171,stroke-width:1.5px,color:#fee2e2
+    classDef okNode fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#d1fae5
+
+    class A startNode
+    class B,D,F,H,L checkNode
+    class C,E,G,I,J,K,M errNode
+    class N okNode
 ```
+
+
 
 ---
 

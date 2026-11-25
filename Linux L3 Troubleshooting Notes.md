@@ -101,6 +101,10 @@ status: in-progress
 | 9 | **Safe Fix (Minimum Change)** — apply the correct fix | Mount / fix filesystem<br>Correct permissions / SELinux context<br>Install missing packages or fix config<br>Update/renew certificate or correct chain<br>Adjust crypto policy if needed (carefully)<br>Restart service in proper order | Avoid unnecessary changes<br>Do ==not== disable SELinux permanently<br>Do not use overly permissive permissions<br>Do not weaken crypto policy without approval<br>Take backup before major change |
 | 10 | **End-to-End Validation** — confirm application is working | Check service status and logs<br>Verify filesystem, permissions and contexts<br>Test TLS from same client and external client<br>Verify application functionality<br>Monitor for errors and performance | Application accessible<br>No SELinux AVC denials<br>No TLS errors<br>No permission/IO errors<br>Dependent services healthy |
 
+```bash
+namei -l /app/logs/application.log   # Verify permissions on every parent directory in the path
+```
+
 ### 1.3 Important Commands (Quick Ref)
 
 ```bash
@@ -2337,6 +2341,8 @@ openssl s_client -connect host:443 \
 
 ```bash
 openssl x509 -in server.crt -text -noout
+
+echo | openssl s_client -connect host:443 -servername host 2>/dev/null | openssl x509 -noout -dates
 ```
 
 **Check the following:**
@@ -2643,6 +2649,7 @@ dmesg -T | grep -iE 'sda|nvme'                                # kernel storage e
 fio --name=q --rw=randread --bs=4k --iodepth=32 --size=256m   # 4K random read benchmark
 ionice -c3 <heavy-job>                                        # run job with idle I/O priority
 sudo systemctl enable --now fstrim.timer                      # schedule automatic SSD TRIM
+sudo fstrim -av                 # manually discard unused blocks on all mounted SSDs
 ```
 
 > [!quote] L3 Takeaway ★
@@ -2700,11 +2707,12 @@ sudo systemctl enable --now fstrim.timer                      # schedule automat
 
 ### Path A — Confirm It's Inodes
 
-| # | Step | Command | Notes |
-| --- | --- | --- | --- |
-| 1 | Check byte space first | `df -h /var` | Plenty free confirms it is not a byte issue |
-| 2 | Check inode usage | `df -i /var` | ==`IUse%` at or near 100%== is the smoking gun |
-| 3 | Watch it while it fills | `watch -n 5 'df -i /var'` | Confirms a live process is still minting files |
+| #   | Step                    | Command                                           | Notes                                                 |
+| --- | ----------------------- | ------------------------------------------------- | ----------------------------------------------------- |
+| 1   | Check byte space first  | `df -h /var`                                      | Plenty free confirms it is not a byte issue           |
+| 2   | Check inode usage       | `df -i /var`                                      | ==`IUse%` at or near 100%== is the smoking gun        |
+| 3   | Watch it while it fills | `watch -n 5 'df -i /var'`                         | Confirms a live process is still minting files        |
+| 4   | Check total ext4 inodes | `sudo tune2fs -l /dev/sda1 \| grep "Inode count"` | Check total configured inodes on an `ext4` filesystem |
 
 ### Path B — Find the File Factory
 
@@ -2801,6 +2809,22 @@ sudo systemctl enable --now fstrim.timer                      # schedule automat
 > [!quote] L3 Takeaway ★
 > **"==The OOM killer shoots the highest-scoring target, not the guilty one== — set `oom_score_adj` before it picks."**
 
+### Extra Memory Recovery & Inspection Commands
+
+```bash
+# Create & activate a 2G swapfile quickly
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+
+# Memory policy & NUMA inspection
+sysctl vm.overcommit_memory     # Check kernel memory overcommit mode (0/1/2)
+numastat                        # Check NUMA node memory allocation & hits/misses
+smem -r                         # Detailed per-process memory report (PSS/RSS)
+sar -r 1 5                      # Memory utilization report over 5 seconds
+
+# Clear pagecache, dentries & inodes (temporary — use cautiously in prod)
+sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+```
+
 ---
 
 ## 25. Creeping Memory Leak
@@ -2895,6 +2919,8 @@ sudo systemctl enable --now fstrim.timer                      # schedule automat
 | 1 | Go per-thread | `top -H -p <pid>` | Often one hot thread inside an otherwise quiet process |
 | 2 | Watch it over time | `pidstat -t -p <pid> 1` | Sustained vs bursty (bursty hints at periodic jobs) |
 | 3 | Profile its syscalls | `timeout 10 strace -cp <tid>` | Spinning on one syscall (`futex`, `read`, `epoll`) shows why |
+| 4 | Check per-process CPU | `pidstat -u 1` | CPU usage per process every second |
+| 5 | Check per-core CPU | `mpstat -P ALL 1` | Per-core CPU utilization (spot single-core saturation) |
 
 ### Path B — Profile, Then Blame
 
@@ -2967,12 +2993,12 @@ sudo systemctl enable --now fstrim.timer                      # schedule automat
 
 ### Path A — The Local Stack
 
-| # | Step | Command | Notes |
-| --- | --- | --- | --- |
-| 1 | Is the link up? | `ip link show eth0` | `state UP` required — `DOWN` means driver, cable, or vSwitch |
-| 2 | Does it have an address? | `ip addr show eth0` | No `inet` → DHCP died; wrong IP → lease or config changed |
-| 3 | Is there a way out? | `ip route ; ping -c3 <gateway>` | Missing default route or dead gateway breaks everything |
-
+| #   | Step                     | Command                         | Notes                                                                      |
+| --- | ------------------------ | ------------------------------- | -------------------------------------------------------------------------- |
+| 1   | Is the link up?          | `ip link show eth0`             | `state UP` required — `DOWN` means driver, cable, or vSwitch               |
+| 2   | Does it have an address? | `ip addr show eth0`             | No `inet` → DHCP died; wrong IP → lease or config changed                  |
+| 3   | Is there a way out?      | `ip route ; ping -c3 <gateway>` | Missing default route or dead gateway breaks everything                    |
+| 4   | Check NIC drops & errors | `ethtool -S eth0`               | Rising RX/TX drops, errors, or resets point to driver, cable, or NIC fault |
 ### Path B — The Path Out
 
 | # | Step | Command | Notes |
@@ -2989,6 +3015,62 @@ sudo systemctl enable --now fstrim.timer                      # schedule automat
   2. Restore default route: `ip route add default via <gw>`
   3. Check cloud/network layer: security groups, NAT gateway, provider status
 
+### Optional — Simulating Network Latency (`tc` / `netem`)
+
+```bash
+sudo tc qdisc add dev eth0 root netem delay 97ms   # Inject 97ms latency on eth0 (lab/staging)
+tc -s qdisc                                        # Check active traffic control rules & stats
+sudo tc qdisc del dev eth0 root netem              # Remove injected latency rule
+```
+
+### API Latency Breakdown (`curl -w`) & Connection States
+
+```bash
+# Quick HTTP status code & total time
+curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' [https://example.com](https://example.com)
+
+# Full timing breakdown (isolate DNS vs TCP vs TLS vs Backend)
+curl -w "DNS: %{time_namelookup}s\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nFirstByte: %{time_starttransfer}s\nTotal: %{time_total}s\n" -o /dev/null -s [https://example.com](https://example.com)
+
+# Socket summary & established connections
+ss -s
+ss -tn state established
+```
+
+| High Metric                          | Likely Area to Investigate                                            |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| **DNS (`time_namelookup`)**          | DNS resolution / `/etc/resolv.conf`                                   |
+| **Connect (`time_connect`)**         | Network path, firewall, or TCP handshake                              |
+| **TLS (`time_appconnect`)**          | TLS handshake, cipher, or certificate negotiation                     |
+| **FirstByte (`time_starttransfer`)** | Backend processing, upstream app, or DB latency (504 Gateway Timeout) |
+
 > [!quote] L3 Takeaway ★
 > **"==Bisect the path: link → address → route → name → remote.== One of the five is always lying."**
 
+## 30. Java & Tomcat Production Support (L3)
+
+### 30.1 Essential JVM & Tomcat Diagnostic Commands
+
+| Task | Command | Notes |
+| --- | --- | --- |
+| Find Java / Tomcat PID | `pgrep -af java` • `ps -ef \| grep tomcat` | Confirm process & startup flags |
+| Check Java version | `java -version` | Verify runtime version |
+| Inspect Tomcat logs | `tail -200 catalina.out` • `grep -inE 'Exception\|ERROR\|Caused by' catalina.out` | Look for stack traces & root exceptions |
+| JVM startup arguments | `jcmd <PID> VM.command_line` | Shows `-Xmx`, `-Xms`, GC flags |
+| JVM system properties | `jcmd <PID> VM.system_properties` | Runtime properties & paths |
+| Heap summary | `jcmd <PID> GC.heap_info` | Live heap & metaspace usage |
+| Capture thread dump | `jstack <PID> > thread_dump.txt` | Diagnose deadlocks, blocked or hot CPU threads |
+| Capture heap dump | `jcmd <PID> GC.heap_dump /tmp/heap.hprof` | Analyze memory leaks (==requires approval==) |
+| Check Java thread CPU | `top -H -p <PID>` • `ps -Lp <PID> -o pid,tid,pcpu,stat,comm` | Map high-CPU OS thread (hex TID) to `jstack` |
+| Verify port & local health | `ss -lntp \| grep 8080` • `curl -v http://localhost:8080/health` | Separate app health from LB/network issues |
+
+> [!warning] Production Safety
+> Heap dumps (`GC.heap_dump`) pause the JVM briefly and can generate multi-gigabyte files. Always verify free disk space (`df -h /tmp`) and obtain change/incident approval before collecting them in production.
+
+### 30.2 Scenario — Tomcat Running, App Returns HTTP 500 / Unreachable
+
+1. Confirm process & service: `pgrep -af java` and `systemctl status tomcat`.
+2. Test locally to bypass LB/firewall: `ss -lntp | grep 8080` and `curl -I http://localhost:8080`.
+3. Inspect recent stack traces: `tail -200 catalina.out` and `grep -inE 'Exception|ERROR|Caused by' catalina.out`.
+4. Check backend dependencies (e.g. DB port): `nc -zv dbhost 1521`.
+5. Correlate timestamp with recent deployments, GC overhead, or thread dumps (`jstack`).

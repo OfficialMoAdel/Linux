@@ -1365,7 +1365,6 @@ ipa passwd moadel
 C:\Windows\System32\drivers\etc\hosts
 ```
 
-%% TODO: راجع الـ entry ده — الطبيعي إنك تعمل map للـ FQDN بتاع سيرفر IPA، مش لاسم يوزر %%
 
 ```text
 192.168.121.147  moadel@example.com

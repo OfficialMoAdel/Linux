@@ -11,6 +11,7 @@ aliases:
   - Linux Notes
   - Introduction to Linux
   - Linux Fundamentals
+source: https://github.com/trimstray/the-book-of-secret-knowledge
 ---
 
 # Linux Fundamentals
@@ -258,6 +259,9 @@ $ pwd
 ```bash
 $ ls
 file1.txt  docs  scripts  test
+
+ls -ltr /app/logs   # Sort by modification time (newest files at the bottom)
+
 ```
 
 ### 3) `cd` — Change Directory
@@ -456,6 +460,7 @@ ls -la                               # Long list including hidden files (startin
 ls -lh                               # Long list with human-readable sizes
 mkdir -p project/{src,logs,config}   # Create project directory structure at once
 du -h --max-depth=1                  # Check size of each folder one level deep
+rename 's/old/new/' *.txt            # Batch rename multiple files using regex
 ```
 
 ### Common Options
@@ -495,6 +500,9 @@ which ls
 whereis ls
 echo $PATH
 env               # Display all current environment variables
+type cd             # Identify if a command is a shell builtin, alias, or binary
+printenv            # Display environment variables (alternative to env)
+
 ```
 
 - `which` → المسار التنفيذي الذي سيُنفَّذ فعلًا عند كتابة الأمر.
@@ -597,6 +605,10 @@ These commands help us to ==search== for files and text, and ==process data== ef
 | 12  | cut     | Extract sections/columns from each line.    | `cut -d: -f1 /etc/passwd`          | Prints first field using `:` as delimiter.          |
 | 13  | tr      | Translate or delete characters.             | `echo "hello" \| tr 'a-z' 'A-Z'`   | Converts lowercase characters to uppercase.         |
 | 14  | xargs   | Build and execute commands from stdin.      | `find . -name "*.tmp" \| xargs rm` | Passes piped items as arguments to another command. |
+| 15  | tee     | Write stdout to file AND screen at once.    | `ls -l \| tee out.txt`             | Saves output while still displaying it in terminal. |
+| 16  | paste   | Merge lines of multiple files side by side. | `paste file1 file2`                | Joins corresponding lines from files.               |
+| 17  | nl      | Number lines of a file.                     | `nl file.txt`                      | Prints file content with line numbers.              |
+
 ### Sample Workflow
 
 1. Find all log files: `find /var/log -name "*.log"`
@@ -639,17 +651,22 @@ grep madel -r /etc/
 
 ### 7.2 Common Patterns
 
-| Pattern                   | Meaning                                      |
-| ------------------------- | -------------------------------------------- |
-| `grep ^# file`            | السطور اللي بتبدأ بـ `#`                     |
-| `grep ^% file`            | السطور اللي بتبدأ بـ `%`                     |
-| `grep AppStream$ file`    | السطور اللي بتنتهي بـ `AppStream`            |
-| `grep -v ^% file`         | عرض أي سطر ==لا== يبدأ بـ `%` (عكس المطابقة) |
-| `grep -w 6010`            | مطابقة الكلمة كاملة فقط                      |
-| `grep -r word /path`      | بحث recursive داخل المجلدات                  |
-| `grep -i "error" app.log` | بحث غير حساس لحالة الأحرف (case-insensitive) |
-| `grep -n "error" app.log` | عرض أرقام السطور المطابقة                    |
-| `grep -c "error" app.log` | عدّ السطور المطابقة فقط                      |
+| Pattern                                            | Meaning                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| `grep ^# file`                                     | السطور اللي بتبدأ بـ `#`                                       |
+| `grep ^% file`                                     | السطور اللي بتبدأ بـ `%`                                       |
+| `grep AppStream$ file`                             | السطور اللي بتنتهي بـ `AppStream`                              |
+| `grep -v ^% file`                                  | عرض أي سطر ==لا== يبدأ بـ `%` (عكس المطابقة)                   |
+| `grep -w 6010`                                     | مطابقة الكلمة كاملة فقط                                        |
+| `grep -r word /path`                               | بحث recursive داخل المجلدات                                    |
+| `grep -i "error" app.log`                          | بحث غير حساس لحالة الأحرف (case-insensitive)                   |
+| `grep -n "error" app.log`                          | عرض أرقام السطور المطابقة                                      |
+| `grep -c "error" app.log`                          | عدّ السطور المطابقة فقط                                        |
+| `grep -C 5 "ERROR" app.log`                        | عرض 5 سطور قبل وبعد كل مطابقة (أو `-A 5` بعد، `-B 5` قبل)      |
+| `grep -rl "ERROR" /app/logs/`                      | طباعة أسماء الملفات التي تحتوي على النمط فقط                   |
+| `grep -o "ERROR" app.log \| wc -l`                 | عدّ ==مرات التكرار الفعلية== (بينما `grep -c` يعدّ السطور فقط) |
+| `grep -v '^$' file.txt`                            | إزالة السطور الفارغة من المخرجات                               |
+| `tail -f app.log \| grep --line-buffered -i ERROR` | متابعة الأخطاء لحظيًا بدون تأخير الـ buffer                    |
 
 ### 7.3 Examples on anaconda-ks.cfg
 
@@ -714,7 +731,21 @@ grep -v ^# anaconda-ks.cfg   # استبعاد سطور التعليقات
 | `sed -n '5p' file.txt`               | طباعة السطر رقم 5 فقط                      |
 | `sed '10d' file.txt`                 | حذف السطر رقم 10                           |
 | `sed -i 's/error/warning/g' app.log` | تعديل الملف ==فعليًا في مكانه (in-place)== |
-|                                      |                                            |
+
+```
+# find — البحث بالوقت والحجم والملفات الفارغة
+find /app/logs -type f -mmin -60                     # Files modified in the last 60 minutes
+find /app -type f -empty                             # Find zero-byte (empty) files
+
+# sed — طباعة نطاق محدد
+sed -n '100,200p' file.txt                           # Print lines 100 to 200
+sed -n '/START/,/END/p' file.txt                     # Print lines between two patterns
+
+# awk — تحليل Access Logs (مقابلات الإنتاج)
+awk '{print $NF}' file.txt                           # Print the last column
+awk '$3==500' access.log                             # Filter HTTP 500 responses (if col 3 = status)
+awk '{print $1}' access.log | sort | uniq -c | sort -nr | head -10   # Top 10 client IPs
+```
 
 **دمج `grep` و `awk` و `sed` معًا:**
 
@@ -744,6 +775,8 @@ These commands help us ==view, control and manage== processes running in a Linux
 | 13  | killall  | Kill all instances by exact name.             | `killall nginx`       | Terminates all processes with that exact name.            |
 | 14  | renice   | Change priority of a running process.         | `renice -n 5 -p 1234` | Adjusts priority (NI) of an active PID.                   |
 | 15  | pgrep    | Find PID by process name.                     | `pgrep nginx`         | Returns matching PIDs directly (great for scripts).       |
+| 16  | nohup    | Run command immune to hangups.                | `nohup ./script.sh &` | Keeps process running even after closing terminal/SSH.    |
+| 17  | stress   | Generate synthetic CPU/RAM load.              | `stress --cpu 4`      | Tests system behavior under CPU stress.                   |
 
 ### Examples
 
@@ -761,6 +794,15 @@ $ nice -n 10 cmd  # Run with low priority
 $ ps -ef | grep nginx                  # Search for a specific process
 $ pgrep nginx && kill $(pgrep nginx)   # Find PID and kill it
 $ top -bn1 | grep "Cpu(s)"             # One-shot CPU snapshot (for scripts)
+
+
+pidof java                           # Get PID(s) of a running program
+kill -l                              # List all available Linux signals
+ps -p <PID> -o pid,ppid,stat,lstart,etime,cmd   # Start time, elapsed time & parent PID
+readlink /proc/<PID>/cwd             # Check current working directory of a running process
+readlink /proc/<PID>/exe             # Check exact binary path of a running process
+time <command>                       # Measure how long a command takes to run
+
 ```
 
 ### Job States
@@ -801,26 +843,26 @@ $ jobs
 
 These commands help us monitor ==disk usage==, ==memory usage== and ==system performance==.
 
-| #   | Command | Description                              | Example                    | What it does                                                |
-| --- | ------- | ---------------------------------------- | -------------------------- | ----------------------------------------------------------- |
-| 1   | df      | Disk free space report.                  | `df -h`                    | Shows disk space usage of file systems.                     |
-| 2   | du      | Estimate file and directory space usage. | `du -sh /home/user`        | Shows size of files or directories.                         |
-| 3   | free    | Display memory usage.                    | `free -h`                  | Shows total, used and free memory.                          |
-| 4   | uptime  | Show how long system has been running.   | `uptime`                   | Shows system uptime and load average.                       |
-| 5   | vmstat  | Report virtual memory statistics.        | `vmstat 1 5`               | Shows processes, memory, CPU and I/O stats.                 |
-| 6   | iostat  | I/O statistics for CPU and devices.      | `iostat -xz 1 5`           | Shows CPU and device I/O performance.                       |
-| 7   | mount   | Mount a file system.                     | `mount /dev/sdb1 /mnt`     | Attaches a filesystem to a directory.                       |
-| 8   | umount  | Unmount a file system.                   | `umount /mnt`              | Detaches a filesystem from a directory.                     |
-| 9   | lsblk   | List block devices.                      | `lsblk`                    | Shows information about block devices.                      |
-| 10  | df -i   | Show inode usage.                        | `df -i`                    | Shows inode usage of file systems.                          |
-| 11  | ncdu    | Interactive disk usage explorer.         | `ncdu -x /var`             | Browse and sort disk usage interactively.                   |
-| 12  | fdisk   | View/manage disk partitions.             | `sudo fdisk -l`            | Lists disks and partition tables.                           |
-| 13  | mkfs    | Create a filesystem on a partition.      | `sudo mkfs.ext4 /dev/sdb1` | Formats a partition (ext4 / xfs / btrfs).                   |
-| 14  | mpstat  | Per-CPU usage statistics (sysstat).      | `mpstat`                   | Shows CPU utilization breakdown.                            |
-| 15  | sar     | Historical performance stats (sysstat).  | `sar -u 1 5`               | Collects and reports system activity.                       |
-| 16  | nmon    | All-in-one interactive monitor.          | `nmon`                     | Monitors CPU, RAM, Disk, and Network together.              |
-| 17  | iotop   | Real-time disk I/O monitor by process.   | `sudo iotop -o`            | Shows which processes are actively reading/writing to disk. |
-
+| #   | Command | Description                              | Example                     | What it does                                                 |
+| --- | ------- | ---------------------------------------- | --------------------------- | ------------------------------------------------------------ |
+| 1   | df      | Disk free space report.                  | `df -h`                     | Shows disk space usage of file systems.                      |
+| 2   | du      | Estimate file and directory space usage. | `du -sh /home/user`         | Shows size of files or directories.                          |
+| 3   | free    | Display memory usage.                    | `free -h`                   | Shows total, used and free memory.                           |
+| 4   | uptime  | Show how long system has been running.   | `uptime`                    | Shows system uptime and load average.                        |
+| 5   | vmstat  | Report virtual memory statistics.        | `vmstat 1 5`                | Shows processes, memory, CPU and I/O stats.                  |
+| 6   | iostat  | I/O statistics for CPU and devices.      | `iostat -xz 1 5`            | Shows CPU and device I/O performance.                        |
+| 7   | mount   | Mount a file system.                     | `mount /dev/sdb1 /mnt`      | Attaches a filesystem to a directory.                        |
+| 8   | umount  | Unmount a file system.                   | `umount /mnt`               | Detaches a filesystem from a directory.                      |
+| 9   | lsblk   | List block devices.                      | `lsblk`                     | Shows information about block devices.                       |
+| 10  | df -i   | Show inode usage.                        | `df -i`                     | Shows inode usage of file systems.                           |
+| 11  | ncdu    | Interactive disk usage explorer.         | `ncdu -x /var`              | Browse and sort disk usage interactively.                    |
+| 12  | fdisk   | View/manage disk partitions.             | `sudo fdisk -l`             | Lists disks and partition tables.                            |
+| 13  | mkfs    | Create a filesystem on a partition.      | `sudo mkfs.ext4 /dev/sdb1`  | Formats a partition (ext4 / xfs / btrfs).                    |
+| 14  | mpstat  | Per-CPU usage statistics (sysstat).      | `mpstat -P ALL 1`           | Shows CPU utilization per core every second.                 |
+| 15  | sar     | Historical performance stats (sysstat).  | `sar -u 1 5` / `sar -r 1 5` | Reports CPU (`-u`) or memory (`-r`) statistics.              |
+| 16  | nmon    | All-in-one interactive monitor.          | `nmon`                      | Monitors CPU, RAM, Disk, and Network together.               |
+| 17  | iotop   | Real-time disk I/O monitor by process.   | `sudo iotop -o`             | Shows which processes are actively reading/writing to disk.  |
+| 18  | smem    | Detailed memory usage (PSS/USS).         | `smem -r`                   | Reports actual per-process memory accounting for shared RAM. |
 ### Examples
 
 ```bash
@@ -880,6 +922,14 @@ load average: 0.08, 0.12, 0.15
 ```bash
 cat /proc/cpuinfo    # Detailed CPU model, cores, and flags
 cat /proc/meminfo    # Detailed kernel memory statistics
+
+lscpu                        # Detailed CPU architecture & cores summary
+nproc                        # Print number of available CPU cores
+cat /proc/loadavg            # Raw 1, 5, 15-min load averages
+timedatectl                  # Check/set system clock and timezone
+df -hT                       # Disk usage + filesystem type (ext4, xfs, etc.)
+mount | grep 'ro[,)]'        # Detect any filesystem mounted read-only
+
 ```
 
 - للمراقبة المستمرة طويلة المدى واللوحات الرسومية (Dashboards) في بيئات الإنتاج: ==Prometheus + Grafana==.
@@ -984,7 +1034,9 @@ These commands help us to ==troubleshoot, test connectivity== and ==manage== net
 | 16  | iftop      | Real-time bandwidth monitor.                      | `sudo iftop`                     | Displays live network bandwidth usage per connection.               |
 | 17  | nload      | Live network traffic monitor.                     | `nload`                          | Visualizes incoming/outgoing bandwidth in real time.                |
 | 18  | telnet     | Test raw TCP port connectivity (legacy).          | `telnet host 80`                 | Connects to a TCP port (prefer `nc -zv` or `ssh` for remote login). |
-
+| 19  | arp        | View/manage ARP cache (legacy).                   | `arp -a`                         | Lists IP-to-MAC mappings (modern equivalent: `ip neigh`).           |
+| 20  | host       | Simple DNS lookup utility.                        | `host google.com`                | Quick domain-to-IP resolution (simpler than `dig`).                 |
+| 21  | ethtool    | Inspect/configure NIC hardware & stats.           | `ethtool -S eth0`                | Shows NIC traffic counters, packet drops, and hardware errors.      |
 ### Examples
 
 ```bash
@@ -1013,6 +1065,11 @@ sudo ip addr add 192.168.1.100/24 dev eth0   # Assign IP address
 sudo ip link set eth0 up                     # Bring interface up
 sudo ip link set eth0 down                   # Bring interface down
 sudo ip route add default via 192.168.1.1    # Add default gateway
+
+sysctl -a | grep net.ipv4                    # Inspect kernel networking parameters
+cat /proc/net/if_inet6                       # Check if IPv6 is active in the kernel
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1   # Temporarily disable IPv6
+
 ```
 
 > [!warning] إعدادات مؤقتة
@@ -1068,6 +1125,10 @@ rsync -av data/ user@host:/backup/        # مزامنة المجلدات بكف
 | 6379 | Redis |
 | 8080 | Application (Alt) |
 
+```bash
+cat /etc/services | grep -w 443 # Look up well-known service ports directly from the OS
+```
+
 > [!tip] Remember
 > `ping` checks connectivity, not speed.
 > `curl` is great for APIs and headers.
@@ -1099,16 +1160,16 @@ rsync -av data/ user@host:/backup/        # مزامنة المجلدات بكف
 
 These commands help us ==install, update, remove== and manage software packages in Linux.
 
-| # | Command | Description | Example | What it does |
-| --- | --- | --- | --- | --- |
-| 1 | apt | Advanced Package Tool (Debian / Ubuntu). | `apt search nginx` | Package manager for Debian based systems. |
-| 2 | yum | Yellowdog Updater Modified (RHEL/CentOS). | `yum list installed` | Package manager for RHEL/CentOS (v7 and below). |
-| 3 | dnf | Dandified YUM (Fedora/RHEL 8+). | `dnf repolist` | Next-generation package manager (Fedora, RHEL 8+). |
-| 4 | rpm | Red Hat Package Manager. | `rpm -qa \| grep httpd` | Manages RPM packages (install, query, verify). |
-| 5 | dpkg | Debian Package Manager. | `dpkg -l \| grep vim` | Manages DEB packages on Debian based systems. |
-| 6 | install | Install a package. | `apt install nginx` | Installs a software package. |
-| 7 | update | Update package lists or upgrade packages. | `yum update` | Updates package lists or installed packages. |
-| 8 | remove | Remove a package. | `apt remove nginx` | Removes a package from the system. |
+| #   | Command | Description                               | Example                 | What it does                                       |
+| --- | ------- | ----------------------------------------- | ----------------------- | -------------------------------------------------- |
+| 1   | apt     | Advanced Package Tool (Debian / Ubuntu).  | `apt search nginx`      | Package manager for Debian based systems.          |
+| 2   | yum     | Yellowdog Updater Modified (RHEL/CentOS). | `yum list installed`    | Package manager for RHEL/CentOS (v7 and below).    |
+| 3   | dnf     | Dandified YUM (Fedora/RHEL 8+).           | `dnf repolist`          | Next-generation package manager (Fedora, RHEL 8+). |
+| 4   | rpm     | Red Hat Package Manager.                  | `rpm -qa \| grep httpd` | Manages RPM packages (install, query, verify).     |
+| 5   | dpkg    | Debian Package Manager.                   | `dpkg -l \| grep vim`   | Manages DEB packages on Debian based systems.      |
+| 6   | install | Install a package.                        | `apt install nginx`     | Installs a software package.                       |
+| 7   | update  | Update package lists or upgrade packages. | `yum update`            | Updates package lists or installed packages.       |
+| 8   | remove  | Remove a package.                         | `apt remove nginx`      | Removes a package from the system.                 |
 
 ### Package Managers by Distribution
 
@@ -1129,6 +1190,7 @@ $ sudo apt remove nginx    # remove package
 $ apt search docker
 $ sudo apt purge nginx     # remove package + config files
 $ apt show nginx           # show package details (version, size, deps)
+sudo apt clean           # remove cached .deb package files to free disk space
 ```
 
 **YUM/DNF (RHEL/CentOS/Fedora):**
@@ -1144,6 +1206,7 @@ $ yum search docker        # search package (YUM)
 $ yum info nginx           # show package info (YUM)
 $ sudo dnf upgrade         # upgrade all packages (DNF)
 $ dnf info nginx           # show package info (DNF)
+$ sudo yum clean all       # clear all cached repos and package files
 ```
 
 ### Useful Options
@@ -1353,7 +1416,9 @@ Developer → Git → Linux Server → Docker → Jenkins → Kubernetes → Clo
 | 9   | Environment Variables?            | Variables that store system or user specific values used by processes and shell. Examples: `HOME`, `PATH`, `USER`, `SHELL`. Use: `echo $PATH` or `export VAR=value`                                                                                                                                               |
 | 10  | Pipe ( \| ) vs Redirection ( > )? | • **Pipe ( \| ):** sends output of one command as input to another. Example: `ls -l \| grep "txt"`<br>• **Redirection ( > ):** sends output of a command to a file. Example: `ls -l > out.txt`                                                                                                                    |
 | 11  | Linux vs Unix?                    | • **Unix:** proprietary, older, and paid OS (e.g. AIX, Solaris).<br>• **Linux:** ==open-source==, free, Unix-like OS widely used across servers and cloud (e.g. Ubuntu, RHEL, CentOS).                                                                                                                            |
-
+| 12  | `>` vs `>>` & `2>` vs `2>&1`?     | • `>` overwrites file; `>>` appends to file.<br>• `2>` redirects `stderr`; `2>&1` merges `stderr` into `stdout`.                                                                                                                                                                                                  |
+| 13  | `&&` vs `;` vs `\|\|`?            | • `;` runs next command regardless of exit code.<br>• `&&` runs next only if previous succeeded (`$?=0`).<br>• `\|\|` runs next only if previous failed (`$?!=0`).                                                                                                                                                |
+| 14  | `grep -c` vs `grep -o \| wc -l`?  | • `grep -c` counts ==matching lines==.<br>• `grep -o \| wc -l` counts ==every matching occurrence== (even multiple per line).                                                                                                                                                                                     |
 
 > [!tip] Remember
 > Practice commands daily.
@@ -1415,7 +1480,7 @@ Developer → Git → Linux Server → Docker → Jenkins → Kubernetes → Clo
 | 33  | history                | Show command history                    |
 | 34  | man                    | Show manual of a command                |
 | 35  | whatis                 | Brief description of command            |
-| 36  | alias                  | Create command shortcut                 |
+| 36  | alias / unalias        | Create or remove command shortcuts      |
 | 37  | tar                    | Archive files                           |
 | 38  | gzip                   | Compress files                          |
 | 39  | gunzip                 | Decompress .gz files                    |
@@ -1797,18 +1862,17 @@ Troubleshooting = ==collect evidence== from logs, processes and network, then is
 
 ### Key Log Files
 
-| Path                                                      | Contains                                           |
-| --------------------------------------------------------- | -------------------------------------------------- |
-| `/var/log/syslog` (or `messages`)                         | General system activity                            |
-| `/var/log/auth.log` (or `secure`)                         | Logins, sudo, SSH attempts                         |
-| `/var/log/kern.log`                                       | Kernel messages                                    |
-| `dmesg` / `/var/log/dmesg`                                | Boot & hardware messages                           |
-| `/var/log/boot.log`                                       | Boot process output                                |
-| `/var/log/cron`                                           | Cron job execution                                 |
-| `/var/log/nginx/`, `/var/log/apache2/`                    | Web server logs                                    |
-| `/var/log/nginx/`, `/var/log/apache2/`, `/var/log/httpd/` | Web server logs (Nginx / Apache)                   |
-| `/var/log/dpkg.log`                                       | Package installation & update logs (Debian/Ubuntu) |
-
+| Path                                                                   | Contains                                           |
+| ---------------------------------------------------------------------- | -------------------------------------------------- |
+| `/var/log/syslog` (or `messages`)                                      | General system activity                            |
+| `/var/log/auth.log` (or `secure`)                                      | Logins, sudo, SSH attempts                         |
+| `/var/log/kern.log`                                                    | Kernel messages                                    |
+| `dmesg` / `/var/log/dmesg`                                             | Boot & hardware messages                           |
+| `/var/log/boot.log`                                                    | Boot process output                                |
+| `/var/log/cron`                                                        | Cron job execution                                 |
+| `/var/log/nginx/`, `/var/log/apache2/`                                 | Web server logs                                    |
+| `/var/log/nginx/`, `/var/log/apache2/`, `/var/log/httpd/`              | Web server logs (Nginx / Apache)                   |
+| `/var/log/dpkg.log`                                                    | Package installation & update logs (Debian/Ubuntu) |
 
 ### Essential Commands
 
@@ -1836,6 +1900,8 @@ find /var/log -type f -name "*.log" -mtime +7 -delete  # delete .log files older
 last -n 20      # recent logins
 lastb           # failed login attempts
 w               # currently logged in + activity
+
+sudo logrotate -f /etc/logrotate.conf   # force immediate log rotation
 ```
 
 ### Layer-by-Layer Troubleshooting Method

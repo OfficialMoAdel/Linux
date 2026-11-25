@@ -1,6 +1,5 @@
 ---
-title: "Linux Shell Scripting — Complete Guide"
-author: "Rakesh Kumar"
+title: Linux Shell Scripting — Complete Guide
 created: 2026-11-07
 tags:
   - linux
@@ -24,12 +23,16 @@ tags:
   - shell-basics
   - variables
   - operators
-
+  - modules
+  - getopts
+  - user-management
+  - one-liners
+  - shellcheck
 aliases:
   - Linux Shell Scripting Notes
   - Shell Scripting Complete Guide
+reference: https://github.com/ohmyzsh/ohmyzsh
 ---
-
 # Linux Shell Scripting — Complete Guide
 
 > [!abstract] Complete Guide for DevOps, Automation & Interview Preparation
@@ -51,28 +54,32 @@ Automate with Shell Scripting
 >
 > **Use cases:** Automation · Task Scheduling · System Administration · Monitoring · Log Management · DevOps Support
 
-## What's Inside?
+### What's Inside?
 
 1. Introduction to Shell Scripting
-2. Linux Shell & Basics
+2. Linux Shell & Bash Basics
 3. Variables & User Input
 4. Operators
 5. Conditional Statements
 6. Case Statements
 7. Loops (for, while, until)
-8. Functions
-9. Arrays & Strings
-10. Command Line Arguments
-11. File & Directory Operations
-12. Text Processing (grep, awk, sed)
-13. Exit Status & Error Handling
-14. Scheduling with Cron
-15. System Monitoring Scripts
-16. Log Management & Backup
-17. DevOps Real-World Scripts
-18. Advanced Shell Scripting
-19. Best Practices
-20. Interview Questions & Practical Tasks
+8. Loop Control Statements (break, continue)
+9. Functions
+10. Arrays & Strings
+11. Command-Line Arguments
+12. File & Directory Operations
+13. Text Processing (grep, awk, sed)
+14. Exit Status & Error Handling
+15. Cron Jobs & Task Scheduling
+16. System Monitoring Scripts
+17. Log Management & Backup
+18. Real-World DevOps Scripts
+19. Advanced Shell Scripting (source, getopts, here-docs)
+20. Hands-on Project — User Management Utility
+21. Quick One-Liners & Snippets
+22. Resources & References
+23. Best Practices *(planned)*
+24. Interview Questions & Practical Tasks *(planned)*
 
 ## Contents of This Note
 
@@ -94,6 +101,10 @@ Automate with Shell Scripting
 - [[#16. System Monitoring Scripts in Shell Scripting]]
 - [[#17. Log Management & Backup Automation in Shell Scripting]]
 - [[#18. Real-World DevOps Shell Scripting]]
+- [[#19. Advanced Shell Scripting]]
+- [[#20. Hands-on Project — User Management Utility]]
+- [[#21. Quick One-Liners & Snippets]]
+- [[#22. Resources & References]]
 
 ---
 
@@ -101,9 +112,9 @@ Automate with Shell Scripting
 
 ### 1.1 What is a Shell?
 
-- A shell is a ==command line interface== between you and the Linux operating system.
-- It takes your commands, interprets them, and passes them to the kernel for execution.
-- Use it interactively or through scripts.
+- A shell is a ==command line interface== between the user and the Linux operating system.
+- It takes your commands, interprets them and passes them to the kernel for execution.
+- Shell provides a way to interact with the system using commands or scripts.
 
 ```mermaid
 flowchart LR
@@ -114,10 +125,10 @@ flowchart LR
 
 ### 1.2 What is Shell Scripting?
 
-- Write a series of Linux commands in a file and execute them together.
-- A shell script is a ==plain text file== with commands, logic, and automation.
-- Mostly written in ==Bash== (Bourne Again Shell).
-- Automates repetitive tasks, system administration, DevOps work, and more.
+- Shell scripting is a way to write a series of Linux commands in a file and execute them together.
+- A shell script is a ==plain text file== containing commands, logic and automation tasks.
+- It is mostly written in ==Bash== (Bourne Again Shell).
+- Helps to automate repetitive tasks, system administration, DevOps work and more.
 
 > [!success] Benefits of Shell Scripting
 > 1. Automate repetitive tasks
@@ -181,9 +192,9 @@ echo "Welcome to Shell Scripting"
 
 ### 2.1 What is Linux Shell?
 
-- The shell is your command-line interface to Linux.
-- It takes your commands, interprets them, and passes them to the kernel.
-- You can use it interactively or through scripts.
+- A shell is a command line interface that allows users to interact with the Linux operating system.
+- It takes commands from the user, interprets them and passes them to the kernel for execution.
+- Shell provides a way to run commands either interactively or through scripts.
 
 ```mermaid
 flowchart LR
@@ -195,9 +206,9 @@ flowchart LR
 ### 2.2 What is Bash?
 
 - ==Bash (Bourne Again Shell)== is the most commonly used shell in Linux.
-- An enhanced version of the original Bourne shell.
-- Supports command history, tab completion, scripting, and more.
-- Default shell on Ubuntu, CentOS, RHEL, Amazon Linux, and most distributions.
+- It is an enhanced version of the Bourne shell.
+- Bash supports command history, tab completion, scripting and many useful features.
+- It is the default shell in most Linux distributions like Ubuntu, CentOS, RHEL, Amazon Linux etc.
 
 ### 2.3 Types of Shells in Linux
 
@@ -379,6 +390,36 @@ echo "Hello $name, you are $age years old."
 > Hello Anush, you are 28 years old.
 > ```
 
+Hidden & Advanced `read` Options
+
+| Option | Purpose |
+| --- | --- |
+| `-p` | Show a prompt before reading |
+| `-s` | ==Silent== — do not echo typed characters (passwords) |
+| `-t N` | Timeout after N seconds (returns non-zero) |
+| `-n N` | Read only N characters (no Enter needed) |
+| `-r` | Raw — keep backslashes as-is (==recommended default==) |
+| `-a` | Read words into an array |
+
+`hidden_input.sh`
+```bash
+#!/bin/bash
+read -r -p "Username: " username
+read -r -s -p "Password: " password
+echo                       # print a newline (Enter was not echoed)
+read -r -n 1 -p "Continue? [y/n]: " confirm
+echo
+echo "User: $username | Password length: ${#password} | Choice: $confirm"
+```
+
+> [!warning] Passwords in scripts
+> `read -s` ==hides the typing==, it does not encrypt anything.
+> Never take a password as a ==command-line argument== (`$2`) — it is visible to every user via `ps aux` and stays in shell history.
+> Never echo the password back; use `${#password}` if you only need to verify it is not empty.
+
+> [!tip] Always use `-r`
+> Without `-r`, a backslash in the input is treated as an escape character and gets lost.
+
 ### 3.6 Command Line Arguments
 
 - You can pass values to a script while running it.
@@ -451,6 +492,58 @@ echo "Modulus: $((a % b))"
 > Division: 3
 > Modulus: 1
 > ```
+
+
+Alternative Arithmetic Methods
+
+Bash has several ways to do math — `$(( ))` is the modern default, but you will meet the others in older scripts.
+
+| Method | Example | Notes |
+| --- | --- | --- |
+| `$(( ))` | `sum=$((a + b))` | ✅ ==Recommended== — built-in, integers only |
+| `(( ))` | `((sum = a + b))` | Arithmetic command — great for counters |
+| `let` | `let "sum = a + b"` | Built-in, no `$` needed inside |
+| `expr` | `sum=$(expr "$a" + "$b")` | External, legacy — ==spaces are mandatory==, `*` must be escaped as `\*` |
+| `bc` | `sum=$(echo "$a + $b" \| bc)` | External — ==supports floats== |
+| `$[ ]` | `sum=$[a+b]` | ❌ Obsolete legacy syntax — do not use |
+
+Floating-Point Math (Bash cannot do it natively)
+```bash
+a=10
+b=3
+echo "$((a / b))"                                   # 3   ← integer division!
+echo "scale=2; $a / $b" | bc -l                     # 3.33
+awk -v a="$a" -v b="$b" 'BEGIN { printf "%.2f\n", a/b }'   # 3.33 (no bc needed)
+```
+
+Mini Calculator — `calculator.sh`
+```bash
+#!/bin/bash
+read -r -p "First number: " a
+read -r -p "Second number: " b
+read -r -p "Operator (+ - * /): " op
+
+case "$op" in
+    +|-|\*)
+        echo "Result: $((a $op b))" ;;
+    /)
+        if [ "$b" -eq 0 ]; then
+            echo "Error: division by zero" >&2
+            exit 1
+        fi
+        echo "Result: $(echo "scale=2; $a / $b" | bc -l)" ;;
+    *)
+        echo "Invalid operator: $op" >&2
+        exit 1 ;;
+esac
+```
+
+> [!warning] Validate the operator first
+> The `case` above only allows `+ - * /`. Passing ==unvalidated user input== straight into `$(( ))` lets an attacker inject commands — always whitelist.
+
+> [!note] `$(( ))` vs `bc`
+> Use `$(( ))` for counters, sizes and thresholds (fast, no dependency).
+> Use `bc -l` or `awk` only when you need ==decimals== (percentages, averages).
 
 ### 4.3 Comparison Operators
 
@@ -686,6 +779,47 @@ else
 fi
 ```
 
+Practical Example — Privilege / Root Check
+
+Many admin scripts (`useradd`, `systemctl`, package installs) must run as root. Check it ==before== doing any work.
+
+`check_root.sh`
+```bash
+#!/bin/bash
+if [ "$EUID" -eq 0 ]; then
+    echo "Welcome $USER — you have full access"
+elif [ "$EUID" -ge 1000 ]; then
+    echo "Welcome $USER — regular user (limited access)"
+else
+    echo "Welcome $USER — system account"
+fi
+```
+
+Guard Pattern (fail fast — used in real scripts)
+```bash
+#!/bin/bash
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must run as root. Try: sudo $0" >&2
+    exit 1
+fi
+echo "Running with root privileges..."
+```
+
+| Variable             | Meaning                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `$UID`               | Real user ID of the shell                                                            |
+| `$EUID`              | ==Effective== user ID — changes with `sudo` / setuid → use this for privilege checks |
+| `$USER` / `$LOGNAME` | Current username                                                                     |
+
+
+> [!note] `-eq` vs `==`
+> Use `==`-style operators (`-eq`, `-gt`, `-lt`) for ==numbers==, and `=` / `!=` for ==strings==.
+> `[ "$UID" == 0 ]` happens to work in bash, but `-eq` is the correct numeric test.
+
+> [!warning] Two classic syntax bugs
+> `elif [$var -eq 2 ]` → ❌ missing space after `[`. `[` is a ==command==, so it needs spaces on both sides: `[ "$var" -eq 2 ]`.
+> Nested `if ... else if ...` needs one `fi` per `if` — prefer ==`elif`== to avoid unbalanced blocks.
+
 ### 5.6 Common Conditions (File Test Operators)
 
 | Operator | Description                       | Example             |
@@ -820,6 +954,56 @@ esac
 > tmpfs           2.0G    0  2.0G   0% /dev/shm
 > ```
 
+
+Interactive Menus with `select`
+
+`select` builds the numbered menu ==for you== and keeps asking until you `break` — no manual `echo` list, no `read`.
+
+`select_menu.sh`
+```bash
+#!/bin/bash
+PS3="Enter your choice: "          # custom prompt (default is "#? ")
+
+select action in "Check Disk" "Check Memory" "Current User" "Exit"
+do
+    case "$action" in
+        "Check Disk")   df -h ;;
+        "Check Memory") free -h ;;
+        "Current User") whoami ;;
+        "Exit")         echo "Bye!"; break ;;
+        "")             echo "Invalid choice: $REPLY" ;;
+    esac
+done
+```
+
+[[!example]] Output
+```text
+$ bash select_menu.sh
+1) Check Disk
+2) Check Memory
+3) Current User
+4) Exit
+Enter your choice: 3
+rakesh
+Enter your choice: 4
+Bye!
+```
+
+`read` + `case` vs `select`
+
+| Feature | `read` + `case` | `select` |
+| --- | --- | --- |
+| Menu numbering | Manual `echo` lines | ==Automatic== |
+| Repetition | Runs once (needs a `while` loop) | ==Loops automatically== |
+| Exiting | Ends by itself | Must `break` |
+| Raw input | Your variable | `$REPLY` (number) + your variable (text) |
+| Invalid input | Hits `*)` default | Variable is ==empty== → match `""` |
+
+> [!tip] Remember
+> `PS3` sets the prompt.
+> On invalid input the selected variable is ==empty==, while `$REPLY` keeps what the user typed.
+> `select` is a ==bash/ksh== feature — not available in plain POSIX `sh`.
+
 ### 6.5 Key Points
 
 > [!success] Key Points
@@ -931,6 +1115,55 @@ done
 > File: demo.txt
 > File: notes.txt
 > ```
+
+
+Brace Expansion & C-Style Loops
+
+```bash
+for i in {1..10};      do echo "$i"; done   # 1 to 10
+for i in {1..100..5};  do echo "$i"; done   # 1, 6, 11 ... 96  (step = 5)
+for i in {01..05};     do echo "file$i"; done   # zero-padded: file01..file05
+for c in {a..e};       do echo "$c"; done   # letters
+for ((i=1; i<=5; i++)); do echo "$i"; done  # C-style loop
+```
+
+Counter Styles
+```bash
+x=1
+while [ "$x" -lt 10 ]; do
+    echo "x = $x"
+    ((x++))            # arithmetic command
+done
+
+# equivalents:
+# x=$((x + 1))   ← safest with set -e
+# let "x = x + 1"
+# ((x += 1))
+```
+
+> [!warning] `((x++))` and `set -e`
+> `((expr))` returns exit status ==1 when the result is 0==.
+> So `x=0; ((x++))` evaluates to `0` → status 1 → with `set -e` your script ==exits silently==!
+> Use `((++x))`, `((x += 1))` or `x=$((x + 1))` instead. See [[#14. Exit Status & Error Handling in Shell Scripting]].
+
+Reading a File Line by Line (the safe way)
+```bash
+# ❌ Wrong: breaks on spaces, expands * and ? , loads whole file
+for name in $(cat names.txt); do
+    echo "Name: $name"
+done
+
+# ✅ Correct: one line at a time, spaces preserved
+while IFS= read -r line; do
+    echo "Name: $line"
+done < names.txt
+```
+
+> [!tip] Why `IFS= read -r`?
+> `IFS=` → keeps leading/trailing whitespace.
+> `-r` → keeps backslashes literally.
+> `< file` → no `cat` subprocess, and the loop runs in the ==current shell== (variables survive).
+
 
 ### 7.4 while Loop
 
@@ -1408,17 +1641,50 @@ done
 - Bash provides many string operations like length, substring, replace, etc.
 - Useful for working with file names, logs, user input and environment variables.
 
-**Common String Operations**
 
-| Operation                   | Example             |
-| --------------------------- | ------------------- |
-| String length               | `${#str}`           |
-| Substring (from position)   | `${str:0:4}`        |
-| Remove prefix               | `${str#pattern}`    |
-| Remove suffix               | `${str%pattern}`    |
-| Replace string              | `${str/old/new}`    |
-| Convert to uppercase        | `${str^^}`          |
-| Convert to lowercase        | `${str,,}`          |
+Common String Operations
+
+| Operation | Example | Result |
+| --- | --- | --- |
+| String length | `${#str}` | number of characters |
+| Substring | `${str:7:5}` | 5 chars starting at index 7 |
+| Remove prefix | `${str#pattern}` | shortest match from start |
+| Remove suffix | `${str%pattern}` | shortest match from end |
+| Replace ==first== match | `${str/old/new}` | one replacement |
+| Replace ==all== matches | `${str//old/new}` | global replacement |
+| Uppercase ==all== | `${str^^}` | `HELLO` |
+| Uppercase ==first== | `${str^}` | `Hello` |
+| Lowercase ==all== | `${str,,}` | `hello` |
+| Lowercase ==first== | `${str,}` | `hELLO` |
+| Swap case (all) | `${str~~}` | `hELLO` ⇄ `Hello` |
+
+`string_cases.sh`
+```bash
+#!/bin/bash
+str1="Welcome To MoAdel Academy"
+echo "${str1/Academy/Channel}"   # Welcome To MoAdel Channel
+echo "${str1,,}"                 # welcome to moadel academy
+echo "${str1,}"                  # welcome To MoAdel Academy
+echo "${str1^^}"                 # WELCOME TO MOADEL ACADEMY
+echo "${str1^}"                  # Welcome To MoAdel Academy
+echo "${str1~~}"                 # wELCOME tO mOaDEL aCADEMY
+
+str2="I Love Linux, Linux is more stable than Windows"
+echo "${str2/Linux/Unix}"        # replaces the FIRST Linux only
+echo "${str2//Linux/Unix}"       # replaces ALL Linux occurrences
+echo "${#str2}"                  # length
+echo "${str2:7:5}"               # Linux  (substring)
+```
+
+> [!warning] `${#str:7:5}` is invalid
+> `#` means ==length only== — combining it with a substring (`${#str2:6:5}`) causes `bad substitution`.
+> Correct form: `${str2:7:5}` (no `#`). Remember indices start at ==0==.
+
+> [!note] Version & locale
+> `${str~~}` (swap case) needs ==Bash 4.4+== — check with `echo "$BASH_VERSION"`.
+> Case conversion follows your ==locale== (`LC_CTYPE`).
+> Practical use: `${file%.txt}.bak` to change an extension, `${str,,}` to normalize user input before comparing.
+
 
 ### 10.7 String Example
 
@@ -1438,7 +1704,7 @@ echo "Lowercase: ${str,,}"
 ```
 
 > [!example] Output
-> ```text
+> ```bash
 > $ bash string_example.sh
 > Original String: DevOpsEngineer
 > Length: 15
@@ -2441,10 +2707,10 @@ fi
 
 ### 16.1 Introduction
 
-- Check server ==health== — CPU, memory, disk, services.
-- Automate monitoring with shell scripts and send alerts.
-- Log output, send email alerts, or integrate with monitoring tools.
-- Useful for DevOps, production, and server maintenance.
+- System monitoring helps us to check the ==health of a server== (CPU, Memory, Disk, Services, etc.).
+- We can use shell scripts to automate monitoring and send alerts.
+- Useful for DevOps, production environments and server maintenance.
+- We can log the output, send email alerts or integrate with monitoring tools.
 
 ### 16.2 Common Commands for Monitoring
 
@@ -3055,3 +3321,645 @@ fi
 > 6. Useful in DevOps, cloud and system administration.
 
 ---
+
+
+## 19. Advanced Shell Scripting
+
+### 19.1 Modular Scripts with `source`
+
+Instead of one huge file, split reusable functions into ==modules== and load them with `source` (like `include` in other languages).
+
+`source` runs the file in the ==current shell== — so its functions and variables stay available.
+
+| Command | Runs in | Functions/variables available afterwards? |
+| --- | --- | --- |
+| `./script.sh` | New subshell | ❌ No |
+| `bash script.sh` | New subshell | ❌ No |
+| `source script.sh` | ==Current shell== | ✅ Yes |
+| `. script.sh` | Current shell (POSIX form) | ✅ Yes |
+
+Project layout
+```text
+user-management/
+├── user_manager.sh          # main driver
+└── modules/
+    ├── user_add.sh          # function user_add
+    └── user_del.sh          # function user_del
+```
+
+`user_manager.sh`
+```bash
+#!/bin/bash
+# Resolve the script's own directory (works from anywhere)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "$SCRIPT_DIR/modules/user_add.sh"
+source "$SCRIPT_DIR/modules/user_del.sh"
+
+user_add        # function defined in the module
+```
+
+> [!warning] Two common mistakes
+> ❌ `source ./modules/user_add.sh` → breaks when the script is run from another directory (or from cron).
+> ✅ Always build the path from ==`${BASH_SOURCE[0]}`== as shown above.
+> A sourced file does ==not== need `chmod +x` — it is read, not executed.
+
+> [!tip] Guard your imports
+> ```bash
+> for mod in user_add user_del; do
+>     file="$SCRIPT_DIR/modules/$mod.sh"
+>     [ -r "$file" ] || { echo "Missing module: $file" >&2; exit 1; }
+>     source "$file"
+> done
+> ```
+
+### 19.2 Aliases Inside Scripts (`shopt -s expand_aliases`)
+
+Aliases are ==disabled by default in non-interactive shells== — that is why an alias that works in your terminal fails inside a script.
+
+```bash
+#!/bin/bash
+shopt -s expand_aliases      # enable alias expansion in this script
+alias include='source'       # the course's "include" trick
+
+include ./modules/user_add.sh
+```
+
+> [!tip] Prefer the real command
+> `alias include='source'` only adds indirection. In production scripts write ==`source`== directly — aliases are meant for interactive convenience, not script logic.
+
+### 19.3 Making Scripts Available Everywhere (`PATH`)
+
+```bash
+# Per-user (recommended)
+mkdir -p ~/bin
+echo 'export PATH="$PATH:$HOME/bin"' >> ~/.bashrc
+source ~/.bashrc                 # apply now
+
+# System-wide
+sudo tee /etc/profile.d/custom-scripts.sh >/dev/null <<'EOF'
+export PATH="$PATH:/opt/scripts"
+EOF
+source /etc/profile.d/custom-scripts.sh
+```
+
+| Location | Scope | Loaded by |
+| --- | --- | --- |
+| `~/.bashrc` | One user, interactive shells | Every new terminal |
+| `~/.profile` | One user, login shells | Login |
+| `/etc/profile.d/*.sh` | ==All users== | Login |
+
+> [!warning] PATH rules
+> Never add `.` (current directory) to PATH — a malicious `ls` in `/tmp` would run instead of the real one.
+> ==Cron does not load your `.bashrc`== — always use absolute paths in cron jobs (see [[#15. Cron Jobs & Task Scheduling in Shell Scripting]]).
+> Keep scripts in `~/bin` or `/opt/scripts`, not in a random root-level folder.
+
+### 19.4 Parsing Options with `getopts`
+
+Positional arguments (`$1`, `$2`) break as soon as options are optional. `getopts` is the built-in, portable parser.
+
+`options_demo.sh`
+```bash
+#!/bin/bash
+usage() { echo "Usage: $0 -u <user> [-e <env>] [-v]" >&2; exit 1; }
+
+verbose=false
+env="dev"
+
+while getopts ":u:e:vh" opt; do
+    case "$opt" in
+        u) user="$OPTARG" ;;
+        e) env="$OPTARG" ;;
+        v) verbose=true ;;
+        h) usage ;;
+        :)  echo "Option -$OPTARG requires an argument" >&2; usage ;;
+        \?) echo "Unknown option: -$OPTARG" >&2; usage ;;
+    esac
+done
+shift $((OPTIND - 1))            # drop parsed options, keep the rest
+
+[ -n "${user:-}" ] || usage
+echo "User=$user Env=$env Verbose=$verbose Remaining=$*"
+```
+
+| Item | Meaning |
+| --- | --- |
+| `"u:e:v"` | `u` and `e` take an argument (`:`), `v` is a flag |
+| Leading `:` | ==Silent mode== — you handle errors yourself |
+| `$OPTARG` | The argument of the current option |
+| `$OPTIND` | Index of the next argument → `shift $((OPTIND-1))` |
+
+> [!note] Short options only
+> `getopts` handles `-u value`, not `--user=value`. For long options use manual parsing or `getopt` (external).
+
+### 19.5 Here-Documents & Here-Strings
+
+Feed a block of text to a command — perfect for generating config files.
+
+```bash
+# Generate a config file
+cat > /tmp/app.conf <<EOF
+app_name=$APP_NAME
+generated=$(date)
+EOF
+
+# Quoted delimiter → NO expansion (literal $ and `)
+cat > /tmp/template.conf <<'EOF'
+path=$HOME
+literal=$(not executed)
+EOF
+
+# <<- strips leading TABS (lets you indent inside if/functions)
+if true; then
+	cat <<-EOF
+	indented block
+	EOF
+fi
+
+# Here-string: feed a single line
+while read -r line; do echo "Got: $line"; done <<< "one two three"
+```
+
+> [!warning] Unquoted `EOF` expands everything
+> With `<<EOF`, variables and `$(commands)` inside the block ==are executed==.
+> Use `<<'EOF'` whenever the content is a template, a script, or comes from user input.
+
+### 19.6 Key Points
+
+> [!success] Key Points
+> ✅ `source` loads code into the ==current shell==; `bash script.sh` does not.
+> ✅ Resolve module paths with `${BASH_SOURCE[0]}` — never rely on `./`.
+> ✅ Aliases need `shopt -s expand_aliases` in scripts (better: avoid them).
+> ✅ Add your scripts folder to PATH via `~/.bashrc` or `/etc/profile.d/`.
+> ✅ Use `getopts` for options, positional args for simple inputs.
+> ✅ Use `<<'EOF'` when you do not want expansion.
+
+### 19.7 Real-World Use Cases
+
+> [!example] Real-World Use Cases
+> Shared function library across many DevOps scripts.
+> Loading environment config (`.env`) into a deployment script.
+> CLI tools with flags (`-e prod -v`).
+> Generating nginx/systemd/config files from templates.
+
+
+## 20. Hands-on Project — User Management Utility
+
+> [!abstract]
+> One project, six steps: from a naive script to a ==modular, hardened CLI tool==.
+> Concepts used: input · conditions · functions · loops · `select` · modules · arguments.
+
+### 20.1 The Evolution Path
+
+| Step | Version | Concept learned | Note section |
+| --- | --- | --- | --- |
+| 1 | Add user (inline) | `read`, `if`, exit status | [[#3. Variables & User Input]] |
+| 2 | Delete user | Conditions + validation | [[#5. Conditional Statements in Shell Scripting]] |
+| 3 | Menu (`if/elif` → `case`) | Menu-driven scripts | [[#6. Case Statements in Shell Scripting]] |
+| 4 | Functions + `while` | Reusability, looping menu | [[#9. Functions in Shell Scripting]] |
+| 5 | `select` + `case` | Auto-generated menu | [[#6. Case Statements in Shell Scripting]] |
+| 6 | Modules + CLI args | `source`, `getopts` | [[#19. Advanced Shell Scripting]] |
+
+### 20.2 Step 1 — The Naive Version (as taught in the course)
+
+```bash
+#!/bin/bash
+read -p "Enter username: " username
+read -s -p "Enter password: " password
+grep -w "$username" /etc/passwd > /dev/null
+if [ $? -eq 0 ]; then
+    echo "User $username already exists"
+else
+    useradd $username -m -d /home/$username -p $password -s /bin/bash
+    echo "User $username created"
+fi
+```
+
+> [!danger] Why this script is broken
+> `useradd -p` expects an ==encrypted hash==, not plain text → the account gets an unusable password.
+> `grep -w "$username" /etc/passwd` matches ==any field== (home path, comment) → false positives.
+> No root check → `useradd` fails halfway with a confusing error.
+> Unquoted variables, no validation, no newline after `read -s`.
+
+### 20.3 Step 2 — Hardened Functions (the modules)
+
+`modules/user_add.sh`
+```bash
+#!/bin/bash
+user_add() {
+    local username password password2
+
+    read -r -p "Enter username: " username
+
+    # Linux username convention: start with letter/_, then letters/digits/_/-
+    if [[ ! "$username" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+        echo "Invalid username: '$username'" >&2
+        return 1
+    fi
+
+    if id -u "$username" &>/dev/null; then
+        echo "User '$username' already exists." >&2
+        return 1
+    fi
+
+    read -r -s -p "Enter password: " password;  echo
+    read -r -s -p "Confirm password: " password2; echo
+
+    if [ -z "$password" ] || [ "$password" != "$password2" ]; then
+        echo "Empty password or mismatch." >&2
+        return 1
+    fi
+
+    # Create the account WITHOUT -p, then set the password safely
+    if ! useradd -m -s /bin/bash "$username"; then
+        echo "useradd failed for '$username'." >&2
+        return 1
+    fi
+
+    printf '%s:%s\n' "$username" "$password" | chpasswd || {
+        echo "Failed to set password for '$username'." >&2
+        return 1
+    }
+
+    echo "User '$username' created successfully."
+}
+```
+
+`modules/user_del.sh`
+```bash
+#!/bin/bash
+user_del() {
+    local username confirm
+
+    read -r -p "Enter username to delete: " username
+
+    if ! id -u "$username" &>/dev/null; then
+        echo "User '$username' does not exist." >&2
+        return 1
+    fi
+
+    if [ "$(id -u "$username")" -lt 1000 ]; then
+        echo "Refusing to delete system account '$username' (UID < 1000)." >&2
+        return 1
+    fi
+
+    if pgrep -u "$username" >/dev/null; then
+        echo "User '$username' has running processes — log them out first." >&2
+        return 1
+    fi
+
+    read -r -p "Delete '$username' AND its home directory? [y/N]: " confirm
+    case "$confirm" in
+        y|Y|yes|YES)
+            userdel -r "$username" && echo "User '$username' deleted." ;;
+        *)  echo "Cancelled." ;;
+    esac
+}
+```
+
+> [!tip] Why `chpasswd` and not `-p`?
+> `chpasswd` reads `user:password` from ==stdin== and hashes it correctly.
+> The password never appears in the process list (`ps aux`) — unlike a command-line argument.
+
+### 20.4 Steps 3 + 4 — Menu Driver (`while` + `case` + functions)
+
+`user_manager.sh`
+```bash
+#!/bin/bash
+set -u                      # NOTE: no `set -e` here — see the warning below
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/modules/user_add.sh"
+source "$SCRIPT_DIR/modules/user_del.sh"
+
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must run as root. Try: sudo $0" >&2
+    exit 1
+fi
+
+while true; do
+    echo
+    echo "===== User Management Utility ====="
+    echo "1) Add user"
+    echo "2) Delete user"
+    echo "3) List regular users"
+    echo "4) Exit"
+    read -r -p "Choice [1-4]: " choice
+
+    case "$choice" in
+        1) user_add ;;
+        2) user_del ;;
+        3) awk -F: '$3 >= 1000 && $3 < 65534 {print $1" (UID "$3")"}' /etc/passwd ;;
+        4) echo "Bye!"; break ;;
+        *) echo "Invalid choice: '$choice'" >&2 ;;
+    esac
+done
+```
+
+> [!warning] `set -e` kills interactive menus
+> With `set -e`, a function that returns 1 (e.g. "user already exists") ==exits the whole script==.
+> In menu scripts use `set -u` and handle return codes yourself: `user_add || echo "Try again"`.
+
+### 20.5 Step 5 — Same Menu with `select`
+
+```bash
+#!/bin/bash
+# ... same root check + source lines as above ...
+PS3="Select an action: "
+
+select action in "Add user" "Delete user" "List users" "Exit"
+do
+    case "$action" in
+        "Add user")    user_add ;;
+        "Delete user") user_del ;;
+        "List users")  awk -F: '$3>=1000 && $3<65534 {print $1}' /etc/passwd ;;
+        "Exit")        echo "Bye!"; break ;;
+        "")            echo "Invalid option: $REPLY" >&2 ;;
+    esac
+done
+```
+
+> [!note] `select` vs `while`
+> `select` prints the numbered menu automatically and loops until `break`.
+> Invalid input → the variable is ==empty== (match `""`), while `$REPLY` holds what was typed.
+
+### 20.6 Step 6 — Non-Interactive CLI Mode
+
+`user_cli.sh`
+```bash
+#!/bin/bash
+set -uo pipefail
+
+usage() { echo "Usage: sudo $0 {add|del} <username>" >&2; exit 1; }
+
+[ "$EUID" -eq 0 ] || { echo "Run as root." >&2; exit 1; }
+[ $# -eq 2 ] || usage
+
+action="$1"
+username="$2"
+
+case "$action" in
+    add)
+        id -u "$username" &>/dev/null && { echo "User exists." >&2; exit 1; }
+        read -r -s -p "Password for $username: " password; echo
+        [ -n "$password" ] || { echo "Empty password." >&2; exit 1; }
+        useradd -m -s /bin/bash "$username" || exit 1
+        printf '%s:%s\n' "$username" "$password" | chpasswd || exit 1
+        echo "Created: $username" ;;
+    del)
+        id -u "$username" &>/dev/null || { echo "No such user." >&2; exit 1; }
+        userdel -r "$username" && echo "Deleted: $username" ;;
+    *)  usage ;;
+esac
+```
+
+> [!danger] Never pass a password as an argument
+> ❌ `./user_cli.sh add ali p@ssword`
+> The password becomes visible in ==`ps aux`== to every user, and is saved in ==shell history==.
+> ✅ Always prompt with `read -s`, or read from a protected file / secret manager.
+
+### 20.7 Bugs in the Original Scripts (and the fixes)
+
+| Original | Problem | Fix |
+| --- | --- | --- |
+| `useradd -p p@ssword` | `-p` takes a ==hash== → password unusable | `useradd` + `chpasswd` |
+| `grep -w "$user" /etc/passwd` | Matches other fields → false positive | `id -u "$user" &>/dev/null` |
+| No root check | Fails midway | `[ "$EUID" -ne 0 ] && exit 1` |
+| `elif [$var -eq 2 ]` | Missing space after `[` | `[ "$var" -eq 2 ]` |
+| `echo"..."` | Missing space | `echo "..."` |
+| `useradd $username` | Word splitting / globbing | `"$username"` |
+| `read -s password` | No newline afterwards | `read -s ...; echo` |
+| `password=$2` | Visible in `ps` + history | Prompt with `read -s` |
+| `userdel $username` | No confirmation, home left behind | Confirm + `userdel -r` |
+| `./moudles/user_add` | Typo + relative path | `modules/` + `$SCRIPT_DIR` |
+| No name validation | Invalid names accepted | Regex check |
+
+### 20.8 Test It Safely
+
+```bash
+bash -n user_manager.sh            # syntax check only (no execution)
+shellcheck user_manager.sh         # static analysis (highly recommended)
+sudo ./user_manager.sh             # run on a VM / container — NOT production
+
+id testuser                        # verify the account
+sudo passwd -S testuser            # password status (P = set, L = locked)
+sudo userdel -r testuser           # clean up
+```
+
+> [!tip] Related
+> User/group commands and account files: [[archive/Linux Fundamentals#16. User & Group Management]]
+
+### 20.9 Key Points
+
+> [!success] Key Points
+> ✅ Validate input ==before== touching the system.
+> ✅ Check privileges first (`$EUID`), fail fast with a clear message.
+> ✅ Use `id -u` to test existence, not `grep` on `/etc/passwd`.
+> ✅ Set passwords with `chpasswd`, never `useradd -p`.
+> ✅ Quote every variable; send errors to `>&2`; return meaningful statuses.
+> ✅ Confirm destructive actions (`userdel -r`) and protect system accounts.
+> ✅ Split into modules once the script grows past one screen.
+
+
+## 21. Quick One-Liners & Snippets
+
+> [!abstract]
+> Copy-paste snippets for daily DevOps work — each one is a building block for a bigger script.
+
+### 21.1 Network Checks
+
+```bash
+# Ping a list of hosts
+for host in google.com github.com internal.local; do
+    if ping -c 1 -W 1 "$host" &>/dev/null; then
+        printf '%-20s UP\n' "$host"
+    else
+        printf '%-20s DOWN\n' "$host"
+    fi
+done
+
+# Quick internet check
+ping -c 1 -W 1 8.8.8.8 &>/dev/null && echo "Online" || echo "Offline"
+
+# Is a TCP port open?
+nc -z -w 2 localhost 22 && echo "Port 22 open" || echo "Port 22 closed"
+
+# No nc installed? Use the bash built-in:
+timeout 2 bash -c '</dev/tcp/localhost/22' 2>/dev/null && echo open || echo closed
+```
+
+> [!warning] Ping is not a service check
+> Many servers block ==ICMP== — a "DOWN" host may still serve traffic. Test the ==actual port==.
+> Ping by ==IP== vs by ==name== to tell a connectivity problem from a DNS problem.
+
+### 21.2 Service Watchdog (Auto-Restart)
+
+`service_watchdog.sh`
+```bash
+#!/bin/bash
+SERVICE="docker"
+LOG="/var/log/service_watchdog.log"
+
+if ! systemctl is-active --quiet "$SERVICE"; then
+    if systemctl restart "$SERVICE"; then
+        echo "$(date '+%F %T') $SERVICE was down → restarted" >> "$LOG"
+    else
+        echo "$(date '+%F %T') FAILED to restart $SERVICE" >> "$LOG"
+    fi
+fi
+```
+```bash
+*/5 * * * * /opt/scripts/service_watchdog.sh    # check every 5 minutes
+```
+
+> [!warning] Auto-restart hides the root cause
+> Prefer systemd's own `Restart=always` + `StartLimitBurst` for production services.
+> Always investigate ==why== it died: `journalctl -u docker -n 50`.
+> See [[archive/Linux Fundamentals#18. Systemd & Service Management]].
+
+### 21.3 Resource Snapshots
+
+```bash
+ps aux --sort=-%mem | head -n 6      # top 5 memory consumers
+ps aux --sort=-%cpu | head -n 6      # top 5 CPU consumers
+```
+
+`system_report.sh`
+```bash
+#!/bin/bash
+REPORT="/tmp/system_report_$(date +%F_%H-%M-%S).txt"
+{
+    echo "=== Host: $(hostname) | $(date) ==="
+    echo; echo "=== CPU ===";    lscpu
+    echo; echo "=== Memory ==="; free -h
+    echo; echo "=== Disk ===";   df -h
+    echo; echo "=== Uptime ==="; uptime
+} > "$REPORT"
+echo "Report saved: $REPORT"
+```
+
+> [!tip] Group with `{ ... } > file`
+> One redirect writes the whole block — cleaner and faster than repeating `>>` on every line.
+
+### 21.4 Security Snapshot (Failed SSH Logins)
+
+```bash
+# Debian / Ubuntu
+sudo grep -c "Failed password" /var/log/auth.log
+
+# RHEL / CentOS
+sudo grep -c "Failed password" /var/log/secure
+
+# Any distro (systemd)
+sudo journalctl -u ssh -u sshd --since today | grep -c "Failed password"
+
+# Top attacking IPs
+sudo grep "Failed password" /var/log/auth.log \
+  | awk '{print $(NF-3)}' | sort | uniq -c | sort -rn | head
+```
+
+> [!note]
+> These logs are ==root-only== → `sudo` is required.
+> A high count means brute-force attempts → consider `fail2ban`, key-only auth, and a non-default port.
+> More log commands: [[archive/Linux Fundamentals#20. Troubleshooting & System Logs]]
+
+### 21.5 Cloud Upload (AWS S3)
+
+```bash
+aws s3 cp "/backup/db_$(date +%F).tar.gz" s3://my-bucket/backups/
+
+# Sync only archives (preview first!)
+aws s3 sync /backup s3://my-bucket/backups/ --exclude "*" --include "*.tar.gz" --dryrun
+```
+
+> [!warning] Credentials & cost
+> Never hardcode keys in the script — use an ==IAM role== (on EC2) or `aws configure`.
+> Always check the exit status; a failed upload that reports "success" is worse than no backup.
+> Use `--dryrun` before any `sync`/`rm` operation.
+
+### 21.6 Scheduled Reboot — Handle With Care
+
+```bash
+# ❌ Risky: unattended weekly reboot
+0 3 * * 0 /sbin/shutdown -r now
+```
+
+> [!danger] Think twice before scheduling reboots
+> It kills running jobs and databases, and the machine may ==not come back== (fsck, bad fstab, failed mount).
+> Nobody is watching at 3 AM. Prefer a ==manual reboot in a maintenance window==.
+
+Safer: ==notify== instead of rebooting automatically.
+```bash
+# Debian / Ubuntu — check if a reboot is required
+[ -f /var/run/reboot-required ] && \
+  echo "Reboot required on $(hostname)" | mail -s "Reboot needed" admin@example.com
+
+# RHEL family
+needs-restarting -r || echo "Reboot required on $(hostname)"
+```
+
+
+### 21.7 Already Covered Elsewhere
+
+| Snippet | Where to find it |
+| --- | --- |
+| Loop over `*.log` files | [[#7. Loops in Shell Scripting]] |
+| Service running check | [[#16. System Monitoring Scripts in Shell Scripting]] |
+| Disk usage alert by mail | [[#15. Cron Jobs & Task Scheduling in Shell Scripting]] |
+| Timestamped `tar` backup | [[#17. Log Management & Backup Automation in Shell Scripting]] |
+| Clean logs older than 7 days | [[#17. Log Management & Backup Automation in Shell Scripting]] |
+| CPU usage monitor | [[#16. System Monitoring Scripts in Shell Scripting]] |
+
+### 21.8 Key Points
+
+> [!success] Key Points
+> ✅ Test the ==port==, not just ping.
+> ✅ Log every automated action with a timestamp.
+> ✅ Prefer systemd features over hand-written watchdogs.
+> ✅ Group output with `{ ... } > file`.
+> ✅ Never hardcode cloud credentials.
+> ✅ Automate ==detection and notification==; keep destructive actions manual.
+
+
+## 22. Resources & References
+
+### 22.1 Courses & Written Guides
+
+| Type | Resource |
+| --- | --- |
+| Course (source of the project) | [KodeKloud — Shell Scripts for Beginners](https://notes.kodekloud.com/docs/Shell-Scripts-for-Beginners/Course-Introduction/Course-Introduction) |
+| Free book | [bobbyiliev — Introduction to Bash Scripting](https://github.com/bobbyiliev/introduction-to-bash-scripting) |
+| Curated list | [awesome-bash](https://github.com/awesome-lists/awesome-bash) — scripts, frameworks, package managers |
+| Reference | [Unix & Linux exit codes tutorial](https://shapeshed.com/unix-exit-codes/) |
+| Fun | [xcowsay](https://www.doof.me.uk/xcowsay/) — a cow that says your build status 🐮 |
+
+> [!note] Credit
+> The user-management project in [[#20. Hands-on Project — User Management Utility]] is adapted from ==MoAdel Academy== course scripts — corrected, hardened and restructured.
+
+### 22.2 Recommended Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `shellcheck` | ==Static analysis== — catches quoting, splitting and logic bugs before you run |
+| `shfmt` | Formats scripts consistently |
+| `bash -n script.sh` | Syntax check without executing |
+| `set -x` / `bash -x` | Trace execution while debugging |
+| `explainshell.com` | Explains any command line piece by piece |
+
+```bash
+sudo apt install shellcheck shfmt      # Debian / Ubuntu
+shellcheck user_manager.sh
+shfmt -w user_manager.sh
+```
+
+### 22.3 Related Notes
+
+- [[archive/Linux Fundamentals]] — commands, permissions, users, systemd, troubleshooting
+- [[archive/Linux Fundamentals#12. Shell Scripting Basics]] — the short version of this guide
+- [[archive/Linux Fundamentals#16. User & Group Management]] — used by the project in section 20
+- [[Docker.txt|Docker Complete Notes]] — containerize the apps your scripts deploy
+- [[git1|Git Complete Notes]] — version your scripts properly
+
+> [!quote] Final Takeaway
+> ==Small scripts → reusable functions → modules → automation.==
+> Write it, test it, `shellcheck` it, then schedule it.
